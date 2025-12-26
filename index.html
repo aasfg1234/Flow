@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>流逝：生存挑戰 (Engine Refactor)</title>
+    <title>流逝：生存挑戰 (Silent Default)</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;600&display=swap" rel="stylesheet">
     <style>
-        /* 樣式保持原樣，確保視覺體驗一致 */
         :root {
             --paper-bg: #f7f5f0;
             --ink-black: #2c2c2c;
@@ -23,27 +22,41 @@
             touch-action: none; -webkit-touch-callout: none;
         }
         #zen-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; overflow: hidden; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E"); }
-        #leaderboard { position: absolute; bottom: 40px; background: rgba(255, 255, 255, 0.4); backdrop-filter: blur(5px); border: 1px solid rgba(0,0,0,0.05); padding: 25px; text-align: left; width: 80%; max-width: 300px; z-index: 5; border-radius: 2px; }
+        
+        #mute-btn {
+            position: absolute; top: 25px; left: 25px; z-index: 210;
+            cursor: pointer; width: 30px; height: 30px; opacity: 0.4; transition: 0.3s;
+        }
+        #mute-btn:hover { opacity: 1; }
+        #mute-btn svg { width: 100%; height: 100%; fill: var(--ink-black); }
+
         #btn { border-radius: 50%; display: none; align-items: center; justify-content: center; position: absolute; z-index: 50; cursor: crosshair; color: #fff; background: var(--sage-green); box-shadow: 0 10px 30px rgba(141, 163, 153, 0.4); writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 5px; will-change: transform; }
         #timer { position: absolute; top: 10%; font-size: 3.5rem; font-weight: 300; color: var(--ink-black); z-index: 60; pointer-events: none; text-align: center; width: 100%; }
         #msg { position: absolute; top: 25%; left: 50%; transform: translateX(-50%); min-width: 220px; font-size: 18px; color: var(--ink-black); opacity: 0; text-align: center; background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); padding: 20px 30px; border-radius: 50px; z-index: 60; pointer-events: none; transition: opacity 0.3s; }
         #roach-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; pointer-events: none; }
         .roach { position: absolute; font-size: 40px; filter: drop-shadow(6px 8px 5px rgba(0,0,0,0.3)); will-change: transform; pointer-events: none; }
+        
         #name-modal { position: absolute; top:0; left:0; width:100%; height:100%; background: var(--paper-bg); z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        /* 僅列出關鍵樣式，其餘省略以保持精簡 */
-        input { background: transparent; border: none; border-bottom: 1px solid #ddd; padding: 10px; font-size: 20px; text-align: center; width: 200px; margin-bottom: 40px; outline: none; }
-        button { padding: 12px 40px; font-size: 14px; background: transparent; border: 1px solid var(--ink-black); cursor: pointer; border-radius: 50px; }
+        input { background: transparent; border: none; border-bottom: 1px solid #ddd; padding: 10px; font-size: 20px; text-align: center; width: 200px; margin-bottom: 40px; outline: none; font-family: var(--font-serif); }
+        button { padding: 12px 40px; font-size: 14px; background: transparent; border: 1px solid var(--ink-black); cursor: pointer; border-radius: 50px; letter-spacing: 2px; }
     </style>
 </head>
 <body oncontextmenu="return false;">
     <audio id="bgm" loop><source src="https://files.freemusicarchive.org/storage-freemusicarchive-org/music/no_curator/Kevin_MacLeod/Classical_Sampler/Kevin_MacLeod_-_Erik_Satie_Gymnopedie_No_1.mp3" type="audio/mpeg"></audio>
+    
+    <div id="mute-btn" onclick="toggleMute()">
+        <svg id="icon-audio" viewBox="0 0 24 24"></svg>
+    </div>
+
     <div id="roach-layer"></div>
     <div id="zen-bg"></div>
+    
     <div id="name-modal">
-        <h2>留下印記</h2>
+        <h2 style="letter-spacing: 8px; font-weight: 300;">流逝</h2>
         <input type="text" id="playerNameInput" placeholder="你的名字" maxlength="10">
         <button onclick="saveName()">進入</button>
     </div>
+
     <div id="timer">0.00 <small>SECONDS</small></div>
     <div id="msg"></div>
     <div id="btn">觸碰</div>
@@ -52,9 +65,12 @@
         const btn = document.getElementById('btn');
         const roachLayer = document.getElementById('roach-layer');
         const bgm = document.getElementById('bgm');
+        const audioIcon = document.getElementById('icon-audio');
         
         let state = {
             isPlaying: false,
+            // 預設關閉：若 localStorage 沒有紀錄，則預設為 true (已靜音)
+            isMuted: localStorage.getItem('zen_muted') !== null ? localStorage.getItem('zen_muted') === 'true' : true,
             lastFrameTime: 0,
             elapsed: 0,
             btnX: window.innerWidth / 2, btnY: window.innerHeight / 2,
@@ -62,14 +78,32 @@
             vx: 0, vy: 0,
             fingerX: 0, fingerY: 0,
             currentRadius: 130,
-            roaches: [] // 中央集權的蟑螂池
+            roaches: []
         };
 
         const CFG = {
             startRadius: 130, minRadius: 60, shrinkTime: 90,
-            inertia: 0.02,
-            roachLimit: 50
+            inertia: 0.02, roachLimit: 60 
         };
+
+        // 初始化
+        bgm.muted = state.isMuted;
+        updateAudioIcon();
+
+        function toggleMute() {
+            state.isMuted = !state.isMuted;
+            bgm.muted = state.isMuted;
+            localStorage.setItem('zen_muted', state.isMuted);
+            updateAudioIcon();
+        }
+
+        function updateAudioIcon() {
+            if (state.isMuted) {
+                audioIcon.innerHTML = '<path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>';
+            } else {
+                audioIcon.innerHTML = '<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>';
+            }
+        }
 
         function gameLoop(timestamp) {
             if (!state.isPlaying) return;
@@ -77,49 +111,30 @@
             const dt = (timestamp - state.lastFrameTime) / 1000;
             state.lastFrameTime = timestamp;
             state.elapsed += dt;
-
             updateGame(dt);
             renderGame();
-
             requestAnimationFrame(gameLoop);
         }
 
         function updateGame(dt) {
-            // 1. 按鈕物理運算
             const distToTarget = Math.hypot(state.targetX - state.btnX, state.targetY - state.btnY);
             if (distToTarget < 50 || Math.random() < 0.01) {
                 const margin = state.currentRadius + 50;
                 state.targetX = margin + Math.random() * (window.innerWidth - margin * 2);
                 state.targetY = margin + Math.random() * (window.innerHeight - margin * 2);
             }
-
-            const dx = state.targetX - state.btnX;
-            const dy = state.targetY - state.btnY;
+            const dx = state.targetX - state.btnX, dy = state.targetY - state.btnY;
             const dist = Math.hypot(dx, dy) || 1;
-            const maxSpeed = 100 + (state.elapsed * 5); // 每秒移動像素
-            
-            const targetVX = (dx / dist) * maxSpeed;
-            const targetVY = (dy / dist) * maxSpeed;
-
-            state.vx += (targetVX - state.vx) * CFG.inertia;
-            state.vy += (targetVY - state.vy) * CFG.inertia;
-            state.btnX += state.vx * dt;
-            state.btnY += state.vy * dt;
-
-            // 2. 縮小邏輯
+            const maxSpeed = 100 + (state.elapsed * 6); 
+            state.vx += ((dx / dist) * maxSpeed - state.vx) * CFG.inertia;
+            state.vy += ((dy / dist) * maxSpeed - state.vy) * CFG.inertia;
+            state.btnX += state.vx * dt; state.btnY += state.vy * dt;
             state.currentRadius = Math.max(CFG.minRadius, CFG.startRadius - (CFG.startRadius - CFG.minRadius) * (state.elapsed / CFG.shrinkTime));
-
-            // 3. 蟑螂生成與 AI 邏輯
             if (state.elapsed > 10 && state.roaches.length < CFG.roachLimit) {
-                const chance = 0.5 * dt; // 每秒 0.5 隻的期望值
-                if (Math.random() < chance) spawnRoachData();
+                if (Math.random() < 0.8 * dt) spawnRoachData();
             }
-
             updateRoaches(dt);
-
-            // 4. 死亡判定
-            const distFinger = Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY);
-            if (distFinger > state.currentRadius + 20) gameOver();
+            if (Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY) > state.currentRadius + 20) gameOver();
         }
 
         function spawnRoachData() {
@@ -129,59 +144,37 @@
             else if (side === 1) { x = window.innerWidth + 50; y = Math.random() * window.innerHeight; }
             else if (side === 2) { x = Math.random() * window.innerWidth; y = window.innerHeight + 50; }
             else { x = -50; y = Math.random() * window.innerHeight; }
-
             const el = document.createElement('div');
-            el.className = 'roach';
-            el.innerText = '🪳';
-            el.style.fontSize = (30 + Math.random() * 30) + 'px';
+            el.className = 'roach'; el.innerText = '🪳';
+            el.style.fontSize = (30 + Math.random() * 25) + 'px';
             roachLayer.appendChild(el);
-
-            state.roaches.push({
-                el: el,
-                x: x, y: y,
-                vx: 0, vy: 0,
-                angle: 0,
-                mode: 'WAIT', // WAIT, DASH, SCATTER
-                timer: Math.random() * 0.5
-            });
+            state.roaches.push({ el: el, x: x, y: y, vx: 0, vy: 0, angle: 0, mode: 'WAIT', timer: Math.random() * 0.5 });
         }
 
         function updateRoaches(dt) {
             state.roaches.forEach(r => {
                 r.timer -= dt;
-                
                 if (r.timer <= 0) {
-                    // 簡單狀態機
                     if (r.mode === 'WAIT') {
-                        r.mode = 'DASH';
-                        r.timer = 0.2 + Math.random() * 0.3;
-                        const angle = Math.atan2(state.btnX - r.x, state.btnY - r.y); // 注意這裡用來對準目標
-                        r.vx = Math.sin(angle) * 400;
-                        r.vy = Math.cos(angle) * 400;
+                        r.mode = 'DASH'; r.timer = 0.2 + Math.random() * 0.4;
+                        const angle = Math.atan2(state.btnX - r.x, state.btnY - r.y);
+                        const speed = 350 + (state.elapsed * 2); 
+                        r.vx = Math.sin(angle) * speed; r.vy = Math.cos(angle) * speed;
                         r.angle = -angle * (180/Math.PI) + 180;
                     } else {
-                        r.mode = 'WAIT';
-                        r.timer = 0.1 + Math.random() * 0.5;
+                        r.mode = 'WAIT'; r.timer = 0.1 + Math.random() * 0.3;
                         r.vx = 0; r.vy = 0;
                     }
                 }
-
-                r.x += r.vx * dt;
-                r.y += r.vy * dt;
+                r.x += r.vx * dt; r.y += r.vy * dt;
             });
         }
 
         function renderGame() {
-            // 渲染按鈕
             const r = state.currentRadius;
-            btn.style.width = (r * 2) + 'px';
-            btn.style.height = (r * 2) + 'px';
+            btn.style.width = (r * 2) + 'px'; btn.style.height = (r * 2) + 'px';
             btn.style.transform = `translate3d(${state.btnX - r}px, ${state.btnY - r}px, 0)`;
-            
-            // 渲染計時器
             document.getElementById('timer').innerHTML = state.elapsed.toFixed(2) + " <small>SECONDS</small>";
-
-            // 渲染蟑螂 (中央統籌渲染)
             state.roaches.forEach(r => {
                 r.el.style.transform = `translate3d(${r.x}px, ${r.y}px, 0) rotate(${r.angle}deg)`;
             });
@@ -196,22 +189,18 @@
         }
 
         function resetGameState() {
-            state.isPlaying = false;
-            state.elapsed = 0;
-            state.lastFrameTime = 0;
+            state.isPlaying = false; state.elapsed = 0; state.lastFrameTime = 0;
             state.roaches.forEach(r => r.el.remove());
             state.roaches = [];
-            state.btnX = window.innerWidth / 2;
-            state.btnY = window.innerHeight / 2;
-            btn.innerText = "觸碰";
-            btn.style.color = "#fff";
+            state.btnX = window.innerWidth / 2; state.btnY = window.innerHeight / 2;
+            btn.innerText = "觸碰"; btn.style.color = "#fff";
             renderGame();
         }
 
         function gameOver() {
+            if (!state.isPlaying) return;
             state.isPlaying = false;
-            bgm.pause();
-            bgm.currentTime = 0;
+            bgm.pause(); bgm.currentTime = 0;
             document.getElementById('msg').style.opacity = 1;
             document.getElementById('msg').innerHTML = `散了<br>${state.elapsed.toFixed(2)}`;
             setTimeout(resetGameState, 2000);
@@ -223,15 +212,14 @@
             if (Math.hypot(p.clientX - state.btnX, p.clientY - state.btnY) < state.currentRadius) {
                 state.isPlaying = true;
                 btn.innerText = "";
-                bgm.play();
+                if(!state.isMuted) bgm.play().catch(()=>{}); 
                 requestAnimationFrame(gameLoop);
             }
         }
 
         function moveInteraction(e) {
             const p = e.touches ? e.touches[0] : e;
-            state.fingerX = p.clientX;
-            state.fingerY = p.clientY;
+            state.fingerX = p.clientX; state.fingerY = p.clientY;
             if(state.isPlaying) e.preventDefault();
         }
 
