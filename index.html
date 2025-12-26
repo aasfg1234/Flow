@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>流逝：生存挑戰 (v2.7 Instruction)</title>
+    <title>流逝：生存挑戰 (v3.0 Classic)</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;600&display=swap" rel="stylesheet">
     
     <style>
@@ -87,11 +87,11 @@
         .is-me { text-decoration: underline; text-decoration-color: var(--muted-gold); text-underline-offset: 4px;}
         .loading { color: #aaa; text-align: center; font-size: 12px; font-weight: 300; letter-spacing: 2px;}
 
-        /* === 層級 50：核心按鈕 === */
+        /* === 層級 50：核心按鈕 (樣式還原) === */
         #btn {
             border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            flex-direction: column; /* 讓文字垂直排列 */
+            flex-direction: column; 
             text-align: center;
             position: absolute; 
             z-index: 50; 
@@ -102,15 +102,16 @@
             transition: width 0.1s, height 0.1s, background-color 0.5s; 
             display: none; will-change: transform, opacity;
             
-            /* 修改字體樣式以適應雙行文字 */
-            font-size: 16px; 
-            font-weight: 400; 
-            line-height: 1.4;
+            /* 回歸基礎字體 */
+            font-family: var(--font-serif); 
+            font-weight: 300; 
+            font-size: 18px; 
             letter-spacing: 2px;
+            line-height: 1.4;
             opacity: 0.9;
         }
         #btn span {
-            display: block; /* 確保換行 */
+            display: block; 
         }
         #btn::after {
             content: ""; position: absolute; width: 100%; height: 100%;
@@ -149,7 +150,7 @@
         .play-count { color: var(--sage-green); font-weight: bold; margin-left: 5px; }
         .global-count { color: var(--muted-gold); margin-left: 5px; }
 
-        /* === 層級 100：蟑螂層 (效能優化) === */
+        /* === 層級 100：蟑螂層 (維持效能優化) === */
         #roach-layer { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             z-index: 100; pointer-events: none; overflow: hidden; 
@@ -221,7 +222,7 @@
         <div id="scoreList"><div class="loading">尋找連結...</div></div>
     </div>
 
-    <div id="btn">按住<br>跟隨</div>
+    <div id="btn">按著<br>隨圓</div>
 
     <script>
         const PANTRY_ID = "3b037575-e357-4684-9646-47f5b3ff2ee7"; 
@@ -279,7 +280,7 @@
         function toggleMute() { isMuted = !isMuted; bgm.muted = isMuted; muteBtn.innerText = isMuted ? "🔇" : "🔊"; }
 
         setTimeout(() => {
-            log("連線中...");
+            log("連線中 (Classic)...");
             loadScores(); 
         }, 500);
 
@@ -390,13 +391,17 @@
             state.btnOpacity = 0.9; state.fadeMode = 0; roachLayer.innerHTML = ''; msgDisplay.style.opacity = '0';
             btn.style.backgroundColor = "var(--sage-green)"; btn.style.boxShadow = "0 10px 30px rgba(141, 163, 153, 0.4)";
             
-            // 這裡更新了重置後的文字
-            btn.innerHTML = "按住<br>跟隨"; 
+            // 重置文字
+            btn.innerHTML = "按著<br>隨圓"; 
             btn.style.color = "#fff"; btn.style.opacity = 0.9; updateBtnStyle();
         }
-        function updateBtnStyle() { const r = state.currentRadius; btn.style.width = btn.style.height = (r * 2) + 'px'; btn.style.transform = `translate3d(${state.btnX - r}px, ${state.btnY - r}px, 0)`; 
-            // 調整字體大小以適應按鈕
-            btn.style.fontSize = Math.max(12, r/5) + 'px'; 
+
+        function updateBtnStyle() { 
+            const r = state.currentRadius; 
+            btn.style.width = btn.style.height = (r * 2) + 'px'; 
+            btn.style.transform = `translate3d(${state.btnX - r}px, ${state.btnY - r}px, 0)`; 
+            // 調整字體大小，配合標準字體
+            btn.style.fontSize = Math.max(14, r/4.5) + 'px'; 
         }
         function moveFinger(e) { if (state.isPlaying) { const p = e.touches ? e.touches[0] : e; state.fingerX = p.clientX; state.fingerY = p.clientY; e.preventDefault(); } }
 
