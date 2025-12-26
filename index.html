@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>流逝：生存挑戰 (v2.8 Art Font)</title>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;600&family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
+    <title>流逝：生存挑戰 (v2.9 Zhi Mang Xing)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;600&family=Zhi+Mang+Xing&display=swap" rel="stylesheet">
     
     <style>
         :root {
@@ -14,8 +14,8 @@
             --sage-green: #8da399;
             --dusty-pink: #d8c3c3;
             --font-serif: 'Noto Serif TC', serif;
-            /* 新增文青藝術字體變數 */
-            --font-art: 'Ma Shan Zheng', cursive;
+            /* 更新藝術字體變數 */
+            --font-art: 'Zhi Mang Xing', cursive;
         }
 
         body { 
@@ -89,7 +89,7 @@
         .is-me { text-decoration: underline; text-decoration-color: var(--muted-gold); text-underline-offset: 4px;}
         .loading { color: #aaa; text-align: center; font-size: 12px; font-weight: 300; letter-spacing: 2px;}
 
-        /* === 層級 50：核心按鈕 (字體修改重點) === */
+        /* === 層級 50：核心按鈕 (樣式微調) === */
         #btn {
             border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
@@ -104,16 +104,16 @@
             transition: width 0.1s, height 0.1s, background-color 0.5s; 
             display: none; will-change: transform, opacity;
             
-            /* 使用新的文青藝術字體 */
+            /* 使用新的行書字體 */
             font-family: var(--font-art); 
             font-weight: 400; 
-            /* 稍微加大初始字體與字距，增加藝術感 */
-            font-size: 20px; 
-            letter-spacing: 4px;
+            /* 稍微加大字體，行書比較飄逸需要大一點才清楚 */
+            font-size: 22px; 
+            /* 縮小一點字距，讓筆畫連貫感更好 */
+            letter-spacing: 3px;
             line-height: 1.3;
-            opacity: 0.9;
-            /* 加上一點文字陰影增加層次 */
-            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            opacity: 0.95;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.15);
         }
         #btn span {
             display: block; 
@@ -285,7 +285,7 @@
         function toggleMute() { isMuted = !isMuted; bgm.muted = isMuted; muteBtn.innerText = isMuted ? "🔇" : "🔊"; }
 
         setTimeout(() => {
-            log("連線中 (Art Font Mode)...");
+            log("連線中 (Zhi Mang Xing Font)...");
             loadScores(); 
         }, 500);
 
@@ -398,7 +398,7 @@
             
             // 重置文字內容
             btn.innerHTML = "按住<br>跟隨"; 
-            btn.style.color = "#fff"; btn.style.opacity = 0.9; updateBtnStyle();
+            btn.style.color = "#fff"; btn.style.opacity = 0.95; updateBtnStyle();
         }
 
         function updateBtnStyle() { 
