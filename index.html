@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>流逝：生存挑戰 (v2.4 Stable)</title>
+    <title>流逝：生存挑戰 (v2.6 Performance)</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;600&display=swap" rel="stylesheet">
     
     <style>
@@ -102,6 +102,8 @@
             display: none; will-change: transform, opacity;
             writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 5px;
             opacity: 0.9;
+            /* 效能優化：告知瀏覽器這個元素會變 */
+            will-change: transform, opacity, left, top;
         }
         #btn::after {
             content: ""; position: absolute; width: 100%; height: 100%;
@@ -140,9 +142,23 @@
         .play-count { color: var(--sage-green); font-weight: bold; margin-left: 5px; }
         .global-count { color: var(--muted-gold); margin-left: 5px; }
 
-        /* === 層級 100：蟑螂層 === */
-        #roach-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; pointer-events: none; overflow: hidden; }
-        .roach { position: absolute; font-size: 40px; filter: drop-shadow(6px 8px 5px rgba(0,0,0,0.3)); will-change: transform; transition: transform 0.1s linear; }
+        /* === 層級 100：蟑螂層 (效能優化重點) === */
+        #roach-layer { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            z-index: 100; pointer-events: none; overflow: hidden; 
+        }
+        .roach { 
+            position: absolute; font-size: 40px; 
+            /* 優化1: 移除昂貴的 drop-shadow，改用較輕的 text-shadow */
+            text-shadow: 2px 2px 2px rgba(0,0,0,0.2);
+            /* 優化2: 強制 GPU 加速 (translateZ) */
+            transform: translateZ(0);
+            /* 優化3: 告知瀏覽器變化屬性 */
+            will-change: transform, top, left; 
+            /* 優化4: 限制渲染範圍 */
+            contain: layout style;
+            transition: transform 0.1s linear; 
+        }
 
         /* === 層級 200：登入 === */
         #name-modal {
@@ -211,7 +227,7 @@
         const TARGET_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`;
         
         const SECRET_SALT = "TheFlow_Survival_2025_HellMode_Secured";
-        const CFG = { startRadius: 130, minRadius: 60, shrinkTime: 90, maxRoaches: 60 };
+        const CFG = { startRadius: 130, minRadius: 60, shrinkTime: 90, maxRoaches: 100 };
 
         const btn = document.getElementById('btn'), timerDisplay = document.getElementById('timer'), msgDisplay = document.getElementById('msg'), roachLayer = document.getElementById('roach-layer'), bgm = document.getElementById('bgm'), muteBtn = document.getElementById('mute-btn');
         const scoreList = document.getElementById('scoreList'), nameModal = document.getElementById('name-modal'), inputName = document.getElementById('playerNameInput'), idDisplay = document.getElementById('player-id-display');
@@ -236,7 +252,6 @@
             return hash.toString(16); 
         }
 
-        // === Logger ===
         function log(msg) {
             console.log(msg);
             debugLog.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}\n` + debugLog.innerHTML;
@@ -244,7 +259,6 @@
         function toggleDebug() { debugLog.style.display = debugLog.style.display === 'none' ? 'block' : 'none'; }
         function setStatus(color) { statusLight.style.background = color; }
 
-        // === State ===
         let state = {
             isPlaying: false, startTime: 0,
             btnX: window.innerWidth / 2, btnY: window.innerHeight / 2,
@@ -261,13 +275,10 @@
 
         function toggleMute() { isMuted = !isMuted; bgm.muted = isMuted; muteBtn.innerText = isMuted ? "🔇" : "🔊"; }
 
-        // === 初始化 ===
         setTimeout(() => {
-            log("連線中 (Stable)...");
-            loadScores(); // 只有初始化時讀取一次
+            log("連線中 (Performance Mode)...");
+            loadScores(); 
         }, 500);
-
-        // === 移除 setInterval，改用被動觸發 ===
 
         function updateIDDisplay() {
             idDisplay.innerHTML = `${playerName} <span class="play-count">· 個人: ${playCount}</span><span class="global-count">· 世界: ${globalPlayCount}</span>`;
@@ -278,6 +289,14 @@
             playerName = val; localStorage.setItem('lastPlayerName', playerName);
             nameModal.style.display = 'none'; btn.style.display = 'flex';
             updateIDDisplay(); bgm.play().catch(e => {});
+            
+            safeFetch().then(data => {
+                if (data.global_play_count && data.global_play_count > globalPlayCount) {
+                    globalPlayCount = data.global_play_count;
+                    updateIDDisplay();
+                }
+            });
+
             resetState(); loadScores();
         }
 
@@ -286,13 +305,17 @@
             const elapsed = (Date.now() - state.startTime) / 1000;
             timerDisplay.innerHTML = elapsed.toFixed(2) + " <small>SECONDS</small>";
             state.currentRadius = elapsed < CFG.shrinkTime ? CFG.startRadius - ((CFG.startRadius - CFG.minRadius) * (elapsed / CFG.shrinkTime)) : CFG.minRadius;
+            
+            // 蟑螂上限 100
             if (elapsed > 10 && Math.random() < (0.02 + (elapsed - 10) * 0.002) && roachLayer.childElementCount < CFG.maxRoaches) spawnRoach();
+            
             const distToTarget = Math.hypot(state.targetX - state.btnX, state.targetY - state.btnY);
             if (distToTarget < 100 || Math.random() < 0.02) { const m = state.currentRadius + 20; state.targetX = m + Math.random() * (window.innerWidth - m*2); state.targetY = m + Math.random() * (window.innerHeight - m*2); }
             const dx = state.targetX - state.btnX, dy = state.targetY - state.btnY, dist = Math.hypot(dx, dy);
             const speed = 1.5 + (elapsed / 8); 
             state.vx += ((dx/dist * speed) - state.vx) * 0.02; state.vy += ((dy/dist * speed) - state.vy) * 0.02;
             state.btnX += state.vx; state.btnY += state.vy;
+            
             if (elapsed > 30) btn.style.backgroundColor = elapsed > 60 ? "var(--dusty-pink)" : "var(--muted-gold)";
             if (elapsed > 10 && state.fadeMode === 0) { if (Math.random() < (0.005 + (elapsed-10)*0.0001)) { state.fadeMode = 1; state.fadeFloor = 0.4 + Math.random() * 0.2; } }
             if (state.fadeMode === 1) { state.btnOpacity -= 0.005; if (state.btnOpacity <= state.fadeFloor) { state.btnOpacity = state.fadeFloor; state.fadeMode = 2; } }
@@ -300,12 +323,43 @@
             else { state.btnOpacity = 0.9; }
             btn.style.opacity = state.btnOpacity;
             updateBtnStyle();
+            
             if (Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY) > state.currentRadius + 25) gameOver(elapsed);
             if (state.isPlaying) loopId = requestAnimationFrame(gameLoop);
         }
-        function spawnRoach() { const r = document.createElement('div'); r.innerText = '🪳'; r.className = 'roach'; r.style.fontSize = `${30 + Math.random() * 50}px`; const s = Math.floor(Math.random()*4), w = window.innerWidth, h = window.innerHeight, o = 100; let x, y; if(s===0){x=Math.random()*w;y=-o}else if(s===1){x=w+o;y=Math.random()*h}else if(s===2){x=Math.random()*w;y=h+o}else{x=-o;y=Math.random()*h} r.style.left=x+'px'; r.style.top=y+'px'; roachLayer.appendChild(r); roachBrain(r, x, y); }
-        function roachBrain(r, cx, cy) { if (!r.parentNode) return; if (Math.hypot(state.btnX - cx, state.btnY - cy) < 50) { setTimeout(() => { if(r.parentNode) moveRoachTo(r, cx, cy, Math.random()>0.5?window.innerWidth+200:-200, Math.random()>0.5?window.innerHeight+200:-200, 500, () => r.remove()); }, 200); return; } if (Math.random() < 0.3) setTimeout(() => roachBrain(r, cx, cy), 100 + Math.random()*200); else { const a = Math.atan2(state.btnY - cy, state.btnX - cx) + (Math.random()-0.5); const d = 50 + Math.random()*100, tm = 50 + Math.random()*100; moveRoachTo(r, cx, cy, cx+Math.cos(a)*d, cy+Math.sin(a)*d, tm, () => roachBrain(r, cx+Math.cos(a)*d, cy+Math.sin(a)*d)); } }
-        function moveRoachTo(r, sx, sy, ex, ey, d, cb) { r.style.transform = `rotate(${Math.atan2(ey-sy, ex-sx)*180/Math.PI + 90}deg)`; r.style.transition = `top ${d}ms linear, left ${d}ms linear`; r.style.left = ex + 'px'; r.style.top = ey + 'px'; setTimeout(cb, d); }
+
+        function spawnRoach() { 
+            const r = document.createElement('div'); r.innerText = '🪳'; r.className = 'roach'; 
+            r.style.fontSize = `${30 + Math.random() * 50}px`; 
+            const s = Math.floor(Math.random()*4), w = window.innerWidth, h = window.innerHeight, o = 100; 
+            let x, y; if(s===0){x=Math.random()*w;y=-o}else if(s===1){x=w+o;y=Math.random()*h}else if(s===2){x=Math.random()*w;y=h+o}else{x=-o;y=Math.random()*h} 
+            // 這裡保留 left/top 是因為初始化，移動時靠 CSS transition
+            r.style.left=x+'px'; r.style.top=y+'px'; 
+            roachLayer.appendChild(r); roachBrain(r, x, y); 
+        }
+
+        function roachBrain(r, cx, cy) { 
+            if (!r.parentNode) return; 
+            if (Math.hypot(state.btnX - cx, state.btnY - cy) < 50) { 
+                setTimeout(() => { 
+                    if(r.parentNode) moveRoachTo(r, cx, cy, Math.random()>0.5?window.innerWidth+200:-200, Math.random()>0.5?window.innerHeight+200:-200, 500, () => r.remove()); 
+                }, 200); return; 
+            } 
+            if (Math.random() < 0.3) setTimeout(() => roachBrain(r, cx, cy), 100 + Math.random()*200); 
+            else { 
+                const a = Math.atan2(state.btnY - cy, state.btnX - cx) + (Math.random()-0.5); 
+                const d = 50 + Math.random()*100, tm = 50 + Math.random()*100; 
+                moveRoachTo(r, cx, cy, cx+Math.cos(a)*d, cy+Math.sin(a)*d, tm, () => roachBrain(r, cx+Math.cos(a)*d, cy+Math.sin(a)*d)); 
+            } 
+        }
+
+        function moveRoachTo(r, sx, sy, ex, ey, d, cb) { 
+            // 使用 translateZ 確保 GPU 加速
+            r.style.transform = `translateZ(0) rotate(${Math.atan2(ey-sy, ex-sx)*180/Math.PI + 90}deg)`; 
+            r.style.transition = `top ${d}ms linear, left ${d}ms linear`; 
+            r.style.left = ex + 'px'; r.style.top = ey + 'px'; 
+            setTimeout(cb, d); 
+        }
 
         function startGame(e) {
             if (state.isPlaying) return;
@@ -314,7 +368,6 @@
             
             playCount++; localStorage.setItem('roach_playCount', playCount);
             updateIDDisplay();
-            // 這裡不呼叫 refreshGlobalCount，避免遊戲一開始就 API Error
 
             state.isPlaying = true; state.startTime = Date.now();
             msgDisplay.style.opacity = '0'; btn.innerText = ""; btn.style.color = "transparent"; 
@@ -341,7 +394,6 @@
         function updateBtnStyle() { const r = state.currentRadius; btn.style.width = btn.style.height = (r * 2) + 'px'; btn.style.transform = `translate3d(${state.btnX - r}px, ${state.btnY - r}px, 0)`; btn.style.fontSize = Math.max(12, r/5) + 'px'; }
         function moveFinger(e) { if (state.isPlaying) { const p = e.touches ? e.touches[0] : e; state.fingerX = p.clientX; state.fingerY = p.clientY; e.preventDefault(); } }
 
-        // === 資料庫核心 ===
         function safeFetch() {
             const bustedUrl = PROXY_BASE + encodeURIComponent(TARGET_URL + `?_t=${Date.now()}`);
             return fetch(bustedUrl).then(res => {
@@ -355,8 +407,8 @@
                 return data || { scores: [], global_play_count: 0 };
             })
             .catch(e => {
-                log("讀取失敗: " + e.message);
-                if(e.message.includes("429")) setStatus('#ff0'); // 429 亮黃燈
+                log("讀取: " + e.message);
+                if(e.message.includes("429")) setStatus('#ff0'); 
                 else setStatus('#f00');
                 return { scores: [], global_play_count: globalPlayCount };
             });
