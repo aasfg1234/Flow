@@ -202,14 +202,14 @@
     <div id="btn">觸碰</div>
 
     <script>
-        // === 配置設定 ===
-        const PANTRY_ID = "6e8005ef-01b2-48b0-93e8-0e2bb6c80702"; 
+        // === 配置設定 (已更新你的新 ID) ===
+        const PANTRY_ID = "3b037575-e357-4684-9646-47f5b3ff2ee7"; 
         const BASKET_NAME = "Rank_v1"; 
         const CFG = { 
             startRadius: 130, 
             minRadius: 60, 
             shrinkTime: 90,
-            maxRoaches: 60 // 蟑螂上限
+            maxRoaches: 60 
         };
 
         // === DOM 元素 ===
@@ -241,7 +241,7 @@
         };
         let loopId = null;
 
-        // === 事件監聽：防止手機原生行為 ===
+        // === 事件監聽 ===
         document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
         let lastTouchEnd = 0;
         document.addEventListener('touchend', function (event) {
@@ -255,7 +255,6 @@
             isMuted = !isMuted;
             bgm.muted = isMuted;
             muteBtn.innerText = isMuted ? "🔇" : "🔊";
-            // 注意：這裡不強制呼叫 .play()，避免 Game Over 後點擊導致幽靈音樂
         }
 
         // === 初始化 ===
@@ -269,22 +268,18 @@
             nameModal.style.display = 'none';
             btn.style.display = 'flex';
             idDisplay.innerText = `${playerName}`;
-            
-            // 進入大廳，嘗試開始背景音樂 (如果靜音，它會默默播放)
-            bgm.play().catch(e => console.log("Audio start blocked (normal until interaction)"));
-            
+            bgm.play().catch(e => console.log("Audio waiting"));
             resetState();
             loadScores();
         }
 
-        // === 遊戲核心循環 ===
+        // === 遊戲核心 ===
         function gameLoop() {
             if (!state.isPlaying) return;
             const now = Date.now();
             const elapsed = (now - state.startTime) / 1000;
             timerDisplay.innerHTML = elapsed.toFixed(2) + " <small>SECONDS</small>";
 
-            // 圓圈縮小邏輯
             if (elapsed < CFG.shrinkTime) {
                 const progress = elapsed / CFG.shrinkTime;
                 state.currentRadius = CFG.startRadius - ((CFG.startRadius - CFG.minRadius) * progress);
@@ -292,7 +287,6 @@
                 state.currentRadius = CFG.minRadius;
             }
 
-            // 蟑螂生成 (10秒後, 上限 60)
             if (elapsed > 10) {
                 const chance = 0.02 + (elapsed - 10) * 0.002;
                 if (Math.random() < chance && roachLayer.childElementCount < CFG.maxRoaches) {
@@ -300,7 +294,6 @@
                 }
             }
 
-            // 按鈕移動物理
             const distToTarget = Math.hypot(state.targetX - state.btnX, state.targetY - state.btnY);
             if (distToTarget < 100 || Math.random() < 0.02) { 
                 const margin = state.currentRadius + 20; 
@@ -308,244 +301,140 @@
                 state.targetY = margin + Math.random() * (window.innerHeight - margin*2);
             }
 
-            const dx = state.targetX - state.btnX;
-            const dy = state.targetY - state.btnY;
+            const dx = state.targetX - state.btnX, dy = state.targetY - state.btnY;
             const dist = Math.hypot(dx, dy);
             const speed = 1.5 + (elapsed / 8); 
 
-            state.vx += ((dx / dist * speed) - state.vx) * 0.02; // 0.02 慣性係數
+            state.vx += ((dx / dist * speed) - state.vx) * 0.02;
             state.vy += ((dy / dist * speed) - state.vy) * 0.02;
+            state.btnX += state.vx; state.btnY += state.vy;
 
-            state.btnX += state.vx;
-            state.btnY += state.vy;
-
-            // 顏色變化
             if (elapsed > 30) {
                  btn.style.backgroundColor = elapsed > 60 ? "var(--dusty-pink)" : "var(--muted-gold)";
             }
 
             updateBtnStyle();
 
-            // 判斷手指是否出界
             const distFinger = Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY);
-            if (distFinger > state.currentRadius + 25) { 
-                gameOver(elapsed);
-            }
+            if (distFinger > state.currentRadius + 25) gameOver(elapsed);
             if (state.isPlaying) loopId = requestAnimationFrame(gameLoop);
         }
 
         // === 蟑螂 AI ===
         function spawnRoach() {
             const roach = document.createElement('div');
-            roach.innerText = '🪳';
-            roach.className = 'roach';
-            const size = 30 + Math.random() * 50;
-            roach.style.fontSize = `${size}px`;
-
-            const side = Math.floor(Math.random() * 4);
+            roach.innerText = '🪳'; roach.className = 'roach';
+            const size = 30 + Math.random() * 50; roach.style.fontSize = `${size}px`;
+            const side = Math.floor(Math.random() * 4), w = window.innerWidth, h = window.innerHeight, offset = 100;
             let x, y;
-            const w = window.innerWidth;
-            const h = window.innerHeight;
-            const offset = 100;
             if (side===0) { x = Math.random() * w; y = -offset; }
             else if (side===1) { x = w + offset; y = Math.random() * h; }
             else if (side===2) { x = Math.random() * w; y = h + offset; }
             else { x = -offset; y = Math.random() * h; }
-            
-            roach.style.left = x + 'px';
-            roach.style.top = y + 'px';
+            roach.style.left = x + 'px'; roach.style.top = y + 'px';
             roachLayer.appendChild(roach);
             roachBrain(roach, x, y);
         }
 
         function roachBrain(roach, currX, currY) {
             if (!roach.parentNode) return;
-            const targetX = state.btnX;
-            const targetY = state.btnY;
-            const dist = Math.hypot(targetX - currX, targetY - currY);
-
-            // 如果接近按鈕，隨機散開
+            const dist = Math.hypot(state.btnX - currX, state.btnY - currY);
             if (dist < 50) {
                 setTimeout(() => {
                     if (!roach.parentNode) return;
-                    const endX = Math.random() > 0.5 ? window.innerWidth + 200 : -200;
-                    const endY = Math.random() > 0.5 ? window.innerHeight + 200 : -200;
-                    moveRoachTo(roach, currX, currY, endX, endY, 500, () => {
-                        if(roach.parentNode) roach.parentNode.removeChild(roach);
-                    });
+                    moveRoachTo(roach, currX, currY, Math.random()>0.5?window.innerWidth+200:-200, Math.random()>0.5?window.innerHeight+200:-200, 500, () => roach.remove());
                 }, 200);
                 return;
             }
-
-            // 隨機移動決策
-            if (Math.random() < 0.3) {
-                setTimeout(() => {
-                    roachBrain(roach, currX, currY);
-                }, 100 + Math.random() * 200);
-            } else {
-                const angle = Math.atan2(targetY - currY, targetX - currX);
-                const jitter = (Math.random() - 0.5) * 1.0; 
-                const moveAngle = angle + jitter;
-                const dashDist = 50 + Math.random() * 100;
-                const duration = 50 + Math.random() * 100;
-                const nextX = currX + Math.cos(moveAngle) * dashDist;
-                const nextY = currY + Math.sin(moveAngle) * dashDist;
-                moveRoachTo(roach, currX, currY, nextX, nextY, duration, () => {
-                    roachBrain(roach, nextX, nextY);
-                });
+            if (Math.random() < 0.3) setTimeout(() => roachBrain(roach, currX, currY), 100 + Math.random()*200);
+            else {
+                const ang = Math.atan2(state.btnY - currY, state.btnX - currX) + (Math.random()-0.5);
+                const dash = 50 + Math.random()*100, dur = 50 + Math.random()*100;
+                moveRoachTo(roach, currX, currY, currX+Math.cos(ang)*dash, currY+Math.sin(ang)*dash, dur, () => roachBrain(roach, currX+Math.cos(ang)*dash, currY+Math.sin(ang)*dash));
             }
         }
 
         function moveRoachTo(roach, startX, startY, endX, endY, duration, callback) {
-            const angleDeg = Math.atan2(endY - startY, endX - startX) * 180 / Math.PI + 90;
-            roach.style.transform = `rotate(${angleDeg}deg)`;
+            roach.style.transform = `rotate(${Math.atan2(endY-startY, endX-startX)*180/Math.PI + 90}deg)`;
             roach.style.transition = `top ${duration}ms linear, left ${duration}ms linear`;
-            roach.style.left = endX + 'px';
-            roach.style.top = endY + 'px';
+            roach.style.left = endX + 'px'; roach.style.top = endY + 'px';
             setTimeout(callback, duration);
         }
 
-        // === 遊戲狀態管理 ===
+        // === 遊戲控制 ===
         function startGame(e) {
             if (state.isPlaying) return;
-            const point = e.touches ? e.touches[0] : e;
-            state.fingerX = point.clientX;
-            state.fingerY = point.clientY;
-            
-            // 檢查是否點在圓圈內
-            const dist = Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY);
-            if (dist > state.currentRadius) return;
-
-            state.isPlaying = true;
-            state.startTime = Date.now();
+            const p = e.touches ? e.touches[0] : e;
+            state.fingerX = p.clientX; state.fingerY = p.clientY;
+            if (Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY) > state.currentRadius) return;
+            state.isPlaying = true; state.startTime = Date.now();
             msgDisplay.style.opacity = '0';
-            
-            btn.innerText = ""; 
-            btn.style.color = "transparent"; 
-            
-            // 確保音樂播放 (是否出聲取決於 muted 屬性)
+            btn.innerText = ""; btn.style.color = "transparent"; 
             bgm.play().catch(e => {});
-
             loopId = requestAnimationFrame(gameLoop);
         }
 
         function gameOver(score) {
-            state.isPlaying = false;
-            cancelAnimationFrame(loopId);
+            state.isPlaying = false; cancelAnimationFrame(loopId);
             if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
-
-            bgm.pause();
-            bgm.currentTime = 0;
-
-            btn.innerText = "散了";
-            btn.style.color = "#fff"; 
-            btn.style.backgroundColor = "#d8c3c3"; 
-            
+            bgm.pause(); bgm.currentTime = 0;
+            btn.innerText = "散了"; btn.style.color = "#fff"; btn.style.backgroundColor = "#d8c3c3"; 
             msgDisplay.innerHTML = `緣分已盡<br><span style="font-family:'Roboto',sans-serif; font-size:2rem; color:var(--ink-black); display:block; margin:5px 0;">${score.toFixed(2)}</span><span style="font-size:12px; color:#666">(上傳中...)</span>`;
             msgDisplay.style.opacity = '1';
-            
-            submitScore(score);
-            setTimeout(resetState, 2000);
+            submitScore(score); setTimeout(resetState, 2000);
         }
 
         function resetState() {
-            state.btnX = window.innerWidth / 2;
-            state.btnY = window.innerHeight / 2;
-            state.vx = 0; state.vy = 0;
-            state.targetX = state.btnX; state.targetY = state.btnY;
-            state.currentRadius = CFG.startRadius;
-            
-            roachLayer.innerHTML = ''; 
-            msgDisplay.style.opacity = '0';
-            
+            state.btnX = window.innerWidth/2; state.btnY = window.innerHeight/2; state.vx = 0; state.vy = 0;
+            state.targetX = state.btnX; state.targetY = state.btnY; state.currentRadius = CFG.startRadius;
+            roachLayer.innerHTML = ''; msgDisplay.style.opacity = '0';
             updateBtnStyle();
-            
-            btn.style.backgroundColor = "var(--sage-green)";
-            btn.style.boxShadow = "0 10px 30px rgba(141, 163, 153, 0.4)";
-            btn.innerText = "觸碰";
-            btn.style.color = "#fff"; 
-            btn.style.opacity = 0.9;
+            btn.style.backgroundColor = "var(--sage-green)"; btn.style.boxShadow = "0 10px 30px rgba(141, 163, 153, 0.4)";
+            btn.innerText = "觸碰"; btn.style.color = "#fff"; btn.style.opacity = 0.9;
         }
 
         function updateBtnStyle() {
             const r = state.currentRadius;
-            btn.style.width = (r * 2) + 'px';
-            btn.style.height = (r * 2) + 'px';
+            btn.style.width = btn.style.height = (r * 2) + 'px';
             btn.style.transform = `translate3d(${state.btnX - r}px, ${state.btnY - r}px, 0)`;
-            btn.style.fontSize = Math.max(12, r / 5) + 'px'; 
+            btn.style.fontSize = Math.max(12, r/5) + 'px'; 
         }
 
-        function moveFinger(e) {
-            if (!state.isPlaying) return;
-            const point = e.touches ? e.touches[0] : e;
-            state.fingerX = point.clientX;
-            state.fingerY = point.clientY;
-            e.preventDefault(); 
-        }
+        function moveFinger(e) { if (state.isPlaying) { const p = e.touches ? e.touches[0] : e; state.fingerX = p.clientX; state.fingerY = p.clientY; e.preventDefault(); } }
 
-        // === Pantry API (排行榜) ===
+        // === Pantry API ===
         function loadScores() {
             const refreshBtn = document.getElementById('refreshBtn');
             refreshBtn.style.animation = "spin 2s linear infinite"; 
             const url = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`;
-            fetch(url).then(res => {
-                if(!res.ok) return { scores: [] };
-                return res.json();
-            }).then(data => {
-                renderLeaderboard(data.scores || []);
-                refreshBtn.style.animation = "none";
-            }).catch(e => {
-                scoreList.innerHTML = `<div class='loading'>訊號微弱</div>`;
-                refreshBtn.style.animation = "none";
-            });
+            fetch(url).then(res => res.json()).then(data => { renderLeaderboard(data.scores || []); refreshBtn.style.animation = "none"; })
+            .catch(() => { scoreList.innerHTML = `<div class='loading'>全新領域 (暫無紀錄)</div>`; refreshBtn.style.animation = "none"; });
         }
 
         function submitScore(newScore) {
             msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(上傳中...)", "<span style='color:#aaa; font-size:12px'>(紀錄中...)</span>");
             const url = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`;
-            fetch(url).then(res => res.json().catch(() => ({ scores: [] })))
-            .then(data => {
+            fetch(url).then(res => res.json().catch(() => ({ scores: [] }))).then(data => {
                 let list = data.scores || [];
                 list.push({ name: playerName, score: newScore, date: Date.now() });
                 list.sort((a, b) => b.score - a.score);
                 list = list.slice(0, 20); 
                 return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scores: list }) });
-            }).then(() => {
-                msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(紀錄中...)", "<span style='color:var(--sage-green); font-size:12px'>(已永恆)</span>");
-                loadScores(); 
-            }).catch(e => {
-                msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(紀錄中...)", "<span style='color:var(--dusty-pink); font-size:12px'>(遺失)</span>");
-            });
+            }).then(() => { msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(紀錄中...)", "<span style='color:var(--sage-green); font-size:12px'>(已永恆)</span>"); loadScores(); })
+            .catch(() => msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(紀錄中...)", "<span style='color:var(--dusty-pink); font-size:12px'>(遺失)</span>"));
         }
 
         function renderLeaderboard(list) {
             if (list.length === 0) { scoreList.innerHTML = "<div class='loading'>一片空白</div>"; return; }
-            let html = list.slice(0, 5).map((e, i) => {
-                let isMeClass = e.name === playerName ? "is-me" : ""; 
-                return `<div class="score-row ${i===0?'rank-1':''} ${isMeClass}"><span>No.${i+1} ${e.name}</span><span>${parseFloat(e.score).toFixed(2)}</span></div>`;
-            }).join('');
-            scoreList.innerHTML = html;
+            scoreList.innerHTML = list.slice(0, 5).map((e, i) => `<div class="score-row ${i===0?'rank-1':''} ${e.name === playerName ? "is-me" : ""}"><span>No.${i+1} ${e.name}</span><span>${parseFloat(e.score).toFixed(2)}</span></div>`).join('');
         }
         
         document.getElementById('refreshBtn').onclick = loadScores;
-
-        // === 綁定操作事件 ===
-        window.addEventListener('mousedown', startGame);
-        window.addEventListener('touchstart', startGame, {passive: false});
-        window.addEventListener('mousemove', moveFinger);
-        window.addEventListener('touchmove', moveFinger, {passive: false});
-        
-        // 放手即死亡
-        window.addEventListener('mouseup', () => { if(state.isPlaying) gameOver((Date.now() - state.startTime) / 1000); });
-        window.addEventListener('touchend', () => { if(state.isPlaying) gameOver((Date.now() - state.startTime) / 1000); });
-        
-        // 視窗調整重置 (防網址列 bug)
-        window.addEventListener('resize', () => {
-            if (!state.isPlaying) {
-                resetState();
-            }
-        });
-
+        window.addEventListener('mousedown', startGame); window.addEventListener('touchstart', startGame, {passive: false});
+        window.addEventListener('mousemove', moveFinger); window.addEventListener('touchmove', moveFinger, {passive: false});
+        window.addEventListener('mouseup', () => state.isPlaying && gameOver((Date.now() - state.startTime)/1000));
+        window.addEventListener('touchend', () => state.isPlaying && gameOver((Date.now() - state.startTime)/1000));
+        window.addEventListener('resize', () => !state.isPlaying && resetState());
     </script>
 </body>
 </html>
