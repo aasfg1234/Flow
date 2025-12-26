@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>流逝：生存挑戰 (v2.7 Instruction)</title>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;600&display=swap" rel="stylesheet">
+    <title>流逝：生存挑戰 (v2.8 Art Font)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;600&family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
     
     <style>
         :root {
@@ -14,6 +14,8 @@
             --sage-green: #8da399;
             --dusty-pink: #d8c3c3;
             --font-serif: 'Noto Serif TC', serif;
+            /* 新增文青藝術字體變數 */
+            --font-art: 'Ma Shan Zheng', cursive;
         }
 
         body { 
@@ -87,11 +89,11 @@
         .is-me { text-decoration: underline; text-decoration-color: var(--muted-gold); text-underline-offset: 4px;}
         .loading { color: #aaa; text-align: center; font-size: 12px; font-weight: 300; letter-spacing: 2px;}
 
-        /* === 層級 50：核心按鈕 === */
+        /* === 層級 50：核心按鈕 (字體修改重點) === */
         #btn {
             border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            flex-direction: column; /* 讓文字垂直排列 */
+            flex-direction: column; 
             text-align: center;
             position: absolute; 
             z-index: 50; 
@@ -102,15 +104,19 @@
             transition: width 0.1s, height 0.1s, background-color 0.5s; 
             display: none; will-change: transform, opacity;
             
-            /* 修改字體樣式以適應雙行文字 */
-            font-size: 16px; 
+            /* 使用新的文青藝術字體 */
+            font-family: var(--font-art); 
             font-weight: 400; 
-            line-height: 1.4;
-            letter-spacing: 2px;
+            /* 稍微加大初始字體與字距，增加藝術感 */
+            font-size: 20px; 
+            letter-spacing: 4px;
+            line-height: 1.3;
             opacity: 0.9;
+            /* 加上一點文字陰影增加層次 */
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         #btn span {
-            display: block; /* 確保換行 */
+            display: block; 
         }
         #btn::after {
             content: ""; position: absolute; width: 100%; height: 100%;
@@ -279,7 +285,7 @@
         function toggleMute() { isMuted = !isMuted; bgm.muted = isMuted; muteBtn.innerText = isMuted ? "🔇" : "🔊"; }
 
         setTimeout(() => {
-            log("連線中...");
+            log("連線中 (Art Font Mode)...");
             loadScores(); 
         }, 500);
 
@@ -390,13 +396,17 @@
             state.btnOpacity = 0.9; state.fadeMode = 0; roachLayer.innerHTML = ''; msgDisplay.style.opacity = '0';
             btn.style.backgroundColor = "var(--sage-green)"; btn.style.boxShadow = "0 10px 30px rgba(141, 163, 153, 0.4)";
             
-            // 這裡更新了重置後的文字
+            // 重置文字內容
             btn.innerHTML = "按住<br>跟隨"; 
             btn.style.color = "#fff"; btn.style.opacity = 0.9; updateBtnStyle();
         }
-        function updateBtnStyle() { const r = state.currentRadius; btn.style.width = btn.style.height = (r * 2) + 'px'; btn.style.transform = `translate3d(${state.btnX - r}px, ${state.btnY - r}px, 0)`; 
-            // 調整字體大小以適應按鈕
-            btn.style.fontSize = Math.max(12, r/5) + 'px'; 
+
+        function updateBtnStyle() { 
+            const r = state.currentRadius; 
+            btn.style.width = btn.style.height = (r * 2) + 'px'; 
+            btn.style.transform = `translate3d(${state.btnX - r}px, ${state.btnY - r}px, 0)`; 
+            // 調整字體大小計算公式，確保新字體在小圓圈時依然易讀
+            btn.style.fontSize = Math.max(14, r/4.5) + 'px'; 
         }
         function moveFinger(e) { if (state.isPlaying) { const p = e.touches ? e.touches[0] : e; state.fingerX = p.clientX; state.fingerY = p.clientY; e.preventDefault(); } }
 
