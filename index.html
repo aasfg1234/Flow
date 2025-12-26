@@ -84,7 +84,6 @@
             cursor: crosshair; color: #fff;
             background: var(--sage-green);
             box-shadow: 0 10px 30px rgba(141, 163, 153, 0.4);
-            /* === JS 全權控制 Opacity，防止閃爍 === */
             transition: width 0.1s, height 0.1s, background-color 0.5s; 
             display: none; will-change: transform, opacity;
             writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 5px;
@@ -118,7 +117,14 @@
             z-index: 60; pointer-events: none; transition: opacity 0.3s;
         }
 
-        #player-id-display { position: absolute; top: 30px; right: 30px; font-size: 11px; color: #aaa; pointer-events: auto; letter-spacing: 1px; font-family: sans-serif; z-index: 60; }
+        #player-id-display { 
+            position: absolute; top: 30px; right: 30px; 
+            font-size: 11px; color: #aaa; pointer-events: auto; 
+            letter-spacing: 1px; font-family: sans-serif; z-index: 60;
+            text-align: right;
+        }
+        .play-count { color: var(--sage-green); font-weight: bold; margin-left: 5px; }
+        .global-count { color: var(--muted-gold); margin-left: 5px; }
 
         /* === 層級 100：蟑螂層 === */
         #roach-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; pointer-events: none; overflow: hidden; }
@@ -191,9 +197,12 @@
 
         let isMuted = true; bgm.volume = 0.6; bgm.muted = true;
         let playerName = localStorage.getItem('lastPlayerName') || "";
+        let playCount = parseInt(localStorage.getItem('roach_playCount') || 0);
+        let globalPlayCount = 0; // 本地暫存的世界計數
+
         if(playerName) inputName.value = playerName;
 
-        // === State: fadeMode (0:穩, 1:消逝, 2:甦醒), fadeFloor: 本次最低透明度 ===
+        // === State ===
         let state = {
             isPlaying: false, startTime: 0,
             btnX: window.innerWidth / 2, btnY: window.innerHeight / 2,
@@ -210,13 +219,23 @@
 
         function toggleMute() { isMuted = !isMuted; bgm.muted = isMuted; muteBtn.innerText = isMuted ? "🔇" : "🔊"; }
 
+        // === 初始化與定時更新 ===
         setTimeout(loadScores, 500);
+        
+        // 每 2 秒偷瞄一下世界計數
+        setInterval(refreshGlobalCount, 2000);
+
+        function updateIDDisplay() {
+            // 顯示：名字 · 個人: 5 · 世界: 999
+            idDisplay.innerHTML = `${playerName} <span class="play-count">· 個人: ${playCount}</span><span class="global-count">· 世界: ${globalPlayCount}</span>`;
+        }
 
         function saveName() {
             let val = inputName.value.trim(); if(!val) return alert("請留名");
             playerName = val; localStorage.setItem('lastPlayerName', playerName);
             nameModal.style.display = 'none'; btn.style.display = 'flex';
-            idDisplay.innerText = `${playerName}`; bgm.play().catch(e => {});
+            updateIDDisplay();
+            bgm.play().catch(e => {});
             resetState(); loadScores();
         }
 
@@ -225,13 +244,10 @@
             const elapsed = (Date.now() - state.startTime) / 1000;
             timerDisplay.innerHTML = elapsed.toFixed(2) + " <small>SECONDS</small>";
 
-            // 圓圈大小
             state.currentRadius = elapsed < CFG.shrinkTime ? CFG.startRadius - ((CFG.startRadius - CFG.minRadius) * (elapsed / CFG.shrinkTime)) : CFG.minRadius;
 
-            // 蟑螂生成
             if (elapsed > 10 && Math.random() < (0.02 + (elapsed - 10) * 0.002) && roachLayer.childElementCount < CFG.maxRoaches) spawnRoach();
 
-            // 物理移動
             const distToTarget = Math.hypot(state.targetX - state.btnX, state.targetY - state.btnY);
             if (distToTarget < 100 || Math.random() < 0.02) { 
                 const m = state.currentRadius + 20; 
@@ -243,24 +259,19 @@
             state.vx += ((dx/dist * speed) - state.vx) * 0.02; state.vy += ((dy/dist * speed) - state.vy) * 0.02;
             state.btnX += state.vx; state.btnY += state.vy;
 
-            // 顏色變化
             if (elapsed > 30) btn.style.backgroundColor = elapsed > 60 ? "var(--dusty-pink)" : "var(--muted-gold)";
 
-            // === 視覺消逝邏輯 (0.4 ~ 0.6) ===
-            // 觸發：10秒後機率觸發
             if (elapsed > 10 && state.fadeMode === 0) {
                 if (Math.random() < (0.005 + (elapsed-10)*0.0001)) {
                     state.fadeMode = 1;
-                    // 隨機決定本次最低透明度 (0.4 ~ 0.6)
                     state.fadeFloor = 0.4 + Math.random() * 0.2;
                 }
             }
-            // 執行
             if (state.fadeMode === 1) {
-                state.btnOpacity -= 0.005; // 緩慢變淡
+                state.btnOpacity -= 0.005; 
                 if (state.btnOpacity <= state.fadeFloor) { state.btnOpacity = state.fadeFloor; state.fadeMode = 2; }
             } else if (state.fadeMode === 2) {
-                state.btnOpacity += 0.005; // 緩慢恢復
+                state.btnOpacity += 0.005; 
                 if (state.btnOpacity >= 0.9) { state.btnOpacity = 0.9; state.fadeMode = 0; }
             } else {
                 state.btnOpacity = 0.9;
@@ -306,6 +317,15 @@
             const p = e.touches ? e.touches[0] : e;
             state.fingerX = p.clientX; state.fingerY = p.clientY;
             if (Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY) > state.currentRadius) return;
+            
+            // === 遊戲開始：增加計數 ===
+            playCount++;
+            localStorage.setItem('roach_playCount', playCount);
+            
+            // 嘗試增加世界計數 (Fire & Forget，不等待)
+            incrementGlobalCount();
+            
+            updateIDDisplay();
             state.isPlaying = true; state.startTime = Date.now();
             msgDisplay.style.opacity = '0'; btn.innerText = ""; btn.style.color = "transparent"; 
             bgm.play().catch(e => {});
@@ -341,11 +361,54 @@
 
         function moveFinger(e) { if (state.isPlaying) { const p = e.touches ? e.touches[0] : e; state.fingerX = p.clientX; state.fingerY = p.clientY; e.preventDefault(); } }
 
+        // === Pantry API 擴充 ===
         function loadScores() {
             const rb = document.getElementById('refreshBtn'); rb.style.animation = "spin 2s linear infinite"; 
-            fetch(`https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`).then(res => res.json())
-            .then(data => { renderLeaderboard(data.scores || []); rb.style.animation = "none"; })
+            fetch(`https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`)
+            .then(res => res.json())
+            .then(data => { 
+                renderLeaderboard(data.scores || []); 
+                globalPlayCount = data.global_play_count || 0; // 更新本地世界計數
+                updateIDDisplay();
+                rb.style.animation = "none"; 
+            })
             .catch(() => { scoreList.innerHTML = `<div class='loading'>全新領域</div>`; rb.style.animation = "none"; });
+        }
+
+        // 單獨更新世界計數顯示 (不重繪排行榜)
+        function refreshGlobalCount() {
+            fetch(`https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.global_play_count && data.global_play_count !== globalPlayCount) {
+                    globalPlayCount = data.global_play_count;
+                    updateIDDisplay();
+                }
+            }).catch(()=>{}); // 失敗就算了，保持安靜
+        }
+
+        // 增加世界計數
+        function incrementGlobalCount() {
+            const url = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`;
+            // 先讀取，再加一，再寫回 (這是最簡單的邏輯，雖然有 Race Condition 風險)
+            fetch(url).then(res => res.json().catch(() => ({ scores: [], global_play_count: 0 })))
+            .then(data => {
+                let currentCount = data.global_play_count || 0;
+                let scores = data.scores || [];
+                // 寫回
+                return fetch(url, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify({ 
+                        scores: scores,
+                        global_play_count: currentCount + 1 
+                    }) 
+                });
+            }).then(() => {
+                // 成功寫入後，本地也更新一下 (雖然 refreshGlobalCount 遲早會更新)
+                globalPlayCount++;
+                updateIDDisplay();
+            }).catch(()=>{});
         }
 
         function submitScore(newScore) {
@@ -353,9 +416,10 @@
             const url = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`;
             fetch(url).then(res => res.json().catch(() => ({ scores: [] }))).then(data => {
                 let list = data.scores || [];
+                let gCount = data.global_play_count || globalPlayCount; // 保持計數不變
                 list.push({ name: playerName, score: newScore, date: Date.now() });
                 list.sort((a, b) => b.score - a.score); list = list.slice(0, 20); 
-                return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scores: list }) });
+                return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scores: list, global_play_count: gCount }) });
             }).then(() => { msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(紀錄中...)", "<span style='color:var(--sage-green); font-size:12px'>(已永恆)</span>"); loadScores(); })
             .catch(() => msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(紀錄中...)", "<span style='color:var(--dusty-pink); font-size:12px'>(遺失)</span>"));
         }
