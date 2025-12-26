@@ -84,7 +84,7 @@
             cursor: crosshair; color: #fff;
             background: var(--sage-green);
             box-shadow: 0 10px 30px rgba(141, 163, 153, 0.4);
-            /* === 關鍵修正：這裡移除了 opacity，解決閃爍問題 === */
+            /* === JS 全權控制 Opacity，防止閃爍 === */
             transition: width 0.1s, height 0.1s, background-color 0.5s; 
             display: none; will-change: transform, opacity;
             writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 5px;
@@ -193,14 +193,14 @@
         let playerName = localStorage.getItem('lastPlayerName') || "";
         if(playerName) inputName.value = playerName;
 
-        // === State: fadeMode (0:穩, 1:消逝, 2:甦醒) ===
+        // === State: fadeMode (0:穩, 1:消逝, 2:甦醒), fadeFloor: 本次最低透明度 ===
         let state = {
             isPlaying: false, startTime: 0,
             btnX: window.innerWidth / 2, btnY: window.innerHeight / 2,
             targetX: window.innerWidth / 2, targetY: window.innerHeight / 2,
             vx: 0, vy: 0, 
             fingerX: 0, fingerY: 0, currentRadius: CFG.startRadius,
-            btnOpacity: 0.9, fadeMode: 0 
+            btnOpacity: 0.9, fadeMode: 0, fadeFloor: 0.4
         };
         let loopId = null;
 
@@ -228,7 +228,7 @@
             // 圓圈大小
             state.currentRadius = elapsed < CFG.shrinkTime ? CFG.startRadius - ((CFG.startRadius - CFG.minRadius) * (elapsed / CFG.shrinkTime)) : CFG.minRadius;
 
-            // 蟑螂生成 (上限60)
+            // 蟑螂生成
             if (elapsed > 10 && Math.random() < (0.02 + (elapsed - 10) * 0.002) && roachLayer.childElementCount < CFG.maxRoaches) spawnRoach();
 
             // 物理移動
@@ -246,17 +246,21 @@
             // 顏色變化
             if (elapsed > 30) btn.style.backgroundColor = elapsed > 60 ? "var(--dusty-pink)" : "var(--muted-gold)";
 
-            // === 視覺消逝邏輯 (平滑版) ===
+            // === 視覺消逝邏輯 (0.4 ~ 0.6) ===
             // 觸發：10秒後機率觸發
             if (elapsed > 10 && state.fadeMode === 0) {
-                if (Math.random() < (0.005 + (elapsed-10)*0.0001)) state.fadeMode = 1; 
+                if (Math.random() < (0.005 + (elapsed-10)*0.0001)) {
+                    state.fadeMode = 1;
+                    // 隨機決定本次最低透明度 (0.4 ~ 0.6)
+                    state.fadeFloor = 0.4 + Math.random() * 0.2;
+                }
             }
             // 執行
             if (state.fadeMode === 1) {
-                state.btnOpacity -= 0.005; // 速度極慢 (約3秒消失)
-                if (state.btnOpacity <= 0.05) { state.btnOpacity = 0.05; state.fadeMode = 2; }
+                state.btnOpacity -= 0.005; // 緩慢變淡
+                if (state.btnOpacity <= state.fadeFloor) { state.btnOpacity = state.fadeFloor; state.fadeMode = 2; }
             } else if (state.fadeMode === 2) {
-                state.btnOpacity += 0.005; // 速度極慢 (約3秒浮現)
+                state.btnOpacity += 0.005; // 緩慢恢復
                 if (state.btnOpacity >= 0.9) { state.btnOpacity = 0.9; state.fadeMode = 0; }
             } else {
                 state.btnOpacity = 0.9;
