@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>流逝：生存挑戰 (Silent Default)</title>
+    <title>流逝：生存挑戰 (Engine v2.1)</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;600&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -23,6 +23,7 @@
         }
         #zen-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; overflow: hidden; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E"); }
         
+        /* 音效開關 */
         #mute-btn {
             position: absolute; top: 25px; left: 25px; z-index: 210;
             cursor: pointer; width: 30px; height: 30px; opacity: 0.4; transition: 0.3s;
@@ -45,7 +46,7 @@
     <audio id="bgm" loop><source src="https://files.freemusicarchive.org/storage-freemusicarchive-org/music/no_curator/Kevin_MacLeod/Classical_Sampler/Kevin_MacLeod_-_Erik_Satie_Gymnopedie_No_1.mp3" type="audio/mpeg"></audio>
     
     <div id="mute-btn" onclick="toggleMute()">
-        <svg id="icon-audio" viewBox="0 0 24 24"></svg>
+        <svg id="icon-audio" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
     </div>
 
     <div id="roach-layer"></div>
@@ -69,8 +70,7 @@
         
         let state = {
             isPlaying: false,
-            // 預設關閉：若 localStorage 沒有紀錄，則預設為 true (已靜音)
-            isMuted: localStorage.getItem('zen_muted') !== null ? localStorage.getItem('zen_muted') === 'true' : true,
+            isMuted: localStorage.getItem('zen_muted') === 'true',
             lastFrameTime: 0,
             elapsed: 0,
             btnX: window.innerWidth / 2, btnY: window.innerHeight / 2,
@@ -83,10 +83,11 @@
 
         const CFG = {
             startRadius: 130, minRadius: 60, shrinkTime: 90,
-            inertia: 0.02, roachLimit: 60 
+            inertia: 0.02,
+            roachLimit: 60 // 提升至 60 隻
         };
 
-        // 初始化
+        // 初始化音效狀態
         bgm.muted = state.isMuted;
         updateAudioIcon();
 
@@ -111,30 +112,41 @@
             const dt = (timestamp - state.lastFrameTime) / 1000;
             state.lastFrameTime = timestamp;
             state.elapsed += dt;
+
             updateGame(dt);
             renderGame();
             requestAnimationFrame(gameLoop);
         }
 
         function updateGame(dt) {
+            // 物理移動
             const distToTarget = Math.hypot(state.targetX - state.btnX, state.targetY - state.btnY);
             if (distToTarget < 50 || Math.random() < 0.01) {
                 const margin = state.currentRadius + 50;
                 state.targetX = margin + Math.random() * (window.innerWidth - margin * 2);
                 state.targetY = margin + Math.random() * (window.innerHeight - margin * 2);
             }
-            const dx = state.targetX - state.btnX, dy = state.targetY - state.btnY;
+
+            const dx = state.targetX - state.btnX;
+            const dy = state.targetY - state.btnY;
             const dist = Math.hypot(dx, dy) || 1;
             const maxSpeed = 100 + (state.elapsed * 6); 
+            
             state.vx += ((dx / dist) * maxSpeed - state.vx) * CFG.inertia;
             state.vy += ((dy / dist) * maxSpeed - state.vy) * CFG.inertia;
-            state.btnX += state.vx * dt; state.btnY += state.vy * dt;
+            state.btnX += state.vx * dt;
+            state.btnY += state.vy * dt;
+
             state.currentRadius = Math.max(CFG.minRadius, CFG.startRadius - (CFG.startRadius - CFG.minRadius) * (state.elapsed / CFG.shrinkTime));
+
+            // 蟑螂中央管理
             if (state.elapsed > 10 && state.roaches.length < CFG.roachLimit) {
                 if (Math.random() < 0.8 * dt) spawnRoachData();
             }
             updateRoaches(dt);
-            if (Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY) > state.currentRadius + 20) gameOver();
+
+            const distFinger = Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY);
+            if (distFinger > state.currentRadius + 20) gameOver();
         }
 
         function spawnRoachData() {
@@ -144,11 +156,17 @@
             else if (side === 1) { x = window.innerWidth + 50; y = Math.random() * window.innerHeight; }
             else if (side === 2) { x = Math.random() * window.innerWidth; y = window.innerHeight + 50; }
             else { x = -50; y = Math.random() * window.innerHeight; }
+
             const el = document.createElement('div');
-            el.className = 'roach'; el.innerText = '🪳';
+            el.className = 'roach';
+            el.innerText = '🪳';
             el.style.fontSize = (30 + Math.random() * 25) + 'px';
             roachLayer.appendChild(el);
-            state.roaches.push({ el: el, x: x, y: y, vx: 0, vy: 0, angle: 0, mode: 'WAIT', timer: Math.random() * 0.5 });
+
+            state.roaches.push({
+                el: el, x: x, y: y, vx: 0, vy: 0, angle: 0,
+                mode: 'WAIT', timer: Math.random() * 0.5
+            });
         }
 
         function updateRoaches(dt) {
@@ -156,23 +174,28 @@
                 r.timer -= dt;
                 if (r.timer <= 0) {
                     if (r.mode === 'WAIT') {
-                        r.mode = 'DASH'; r.timer = 0.2 + Math.random() * 0.4;
+                        r.mode = 'DASH';
+                        r.timer = 0.2 + Math.random() * 0.4;
                         const angle = Math.atan2(state.btnX - r.x, state.btnY - r.y);
                         const speed = 350 + (state.elapsed * 2); 
-                        r.vx = Math.sin(angle) * speed; r.vy = Math.cos(angle) * speed;
+                        r.vx = Math.sin(angle) * speed;
+                        r.vy = Math.cos(angle) * speed;
                         r.angle = -angle * (180/Math.PI) + 180;
                     } else {
-                        r.mode = 'WAIT'; r.timer = 0.1 + Math.random() * 0.3;
+                        r.mode = 'WAIT';
+                        r.timer = 0.1 + Math.random() * 0.3;
                         r.vx = 0; r.vy = 0;
                     }
                 }
-                r.x += r.vx * dt; r.y += r.vy * dt;
+                r.x += r.vx * dt;
+                r.y += r.vy * dt;
             });
         }
 
         function renderGame() {
             const r = state.currentRadius;
-            btn.style.width = (r * 2) + 'px'; btn.style.height = (r * 2) + 'px';
+            btn.style.width = (r * 2) + 'px';
+            btn.style.height = (r * 2) + 'px';
             btn.style.transform = `translate3d(${state.btnX - r}px, ${state.btnY - r}px, 0)`;
             document.getElementById('timer').innerHTML = state.elapsed.toFixed(2) + " <small>SECONDS</small>";
             state.roaches.forEach(r => {
@@ -189,18 +212,23 @@
         }
 
         function resetGameState() {
-            state.isPlaying = false; state.elapsed = 0; state.lastFrameTime = 0;
+            state.isPlaying = false;
+            state.elapsed = 0;
+            state.lastFrameTime = 0;
             state.roaches.forEach(r => r.el.remove());
             state.roaches = [];
-            state.btnX = window.innerWidth / 2; state.btnY = window.innerHeight / 2;
-            btn.innerText = "觸碰"; btn.style.color = "#fff";
+            state.btnX = window.innerWidth / 2;
+            state.btnY = window.innerHeight / 2;
+            btn.innerText = "觸碰";
+            btn.style.color = "#fff";
             renderGame();
         }
 
         function gameOver() {
             if (!state.isPlaying) return;
             state.isPlaying = false;
-            bgm.pause(); bgm.currentTime = 0;
+            bgm.pause();
+            bgm.currentTime = 0;
             document.getElementById('msg').style.opacity = 1;
             document.getElementById('msg').innerHTML = `散了<br>${state.elapsed.toFixed(2)}`;
             setTimeout(resetGameState, 2000);
@@ -212,14 +240,15 @@
             if (Math.hypot(p.clientX - state.btnX, p.clientY - state.btnY) < state.currentRadius) {
                 state.isPlaying = true;
                 btn.innerText = "";
-                if(!state.isMuted) bgm.play().catch(()=>{}); 
+                bgm.play().catch(()=>{}); 
                 requestAnimationFrame(gameLoop);
             }
         }
 
         function moveInteraction(e) {
             const p = e.touches ? e.touches[0] : e;
-            state.fingerX = p.clientX; state.fingerY = p.clientY;
+            state.fingerX = p.clientX;
+            state.fingerY = p.clientY;
             if(state.isPlaying) e.preventDefault();
         }
 
