@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>流逝：生存挑戰 (v2.2 Sync Fix)</title>
+    <title>流逝：生存挑戰 (v2.3 Secured)</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;600&display=swap" rel="stylesheet">
     
     <style>
@@ -209,6 +209,10 @@
         const BASKET_NAME = "Rank_v1"; 
         const PROXY_BASE = "https://corsproxy.io/?";
         const TARGET_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`;
+        
+        // === 防偽核心設定 ===
+        // 這就是你的「秘密鹽巴」，雖然寫在前端，但對於不會寫程式的人來說已經是天書
+        const SECRET_SALT = "TheFlow_Survival_2025_HellMode_Secured";
 
         const CFG = { startRadius: 130, minRadius: 60, shrinkTime: 90, maxRoaches: 60 };
 
@@ -223,6 +227,18 @@
         let isSubmitting = false;
 
         if(playerName) inputName.value = playerName;
+
+        // === 雜湊函式 (簡易防偽簽章) ===
+        function generateSignature(name, score) {
+            const raw = name + "_" + parseFloat(score).toFixed(2) + "_" + SECRET_SALT;
+            let hash = 0;
+            for (let i = 0; i < raw.length; i++) {
+                const char = raw.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // Convert to 32bit integer
+            }
+            return hash.toString(16); // 回傳 16 進位字串
+        }
 
         // === Logger ===
         function log(msg) {
@@ -251,11 +267,10 @@
 
         // === 初始化 ===
         setTimeout(() => {
-            log("初始化連線...");
+            log("連線中 (Secured)...");
             loadScores();
         }, 500);
 
-        // 讀取同步頻率 (5秒)
         setInterval(() => {
             if (!isSubmitting) refreshGlobalCount(); 
         }, 5000);
@@ -332,9 +347,8 @@
         function updateBtnStyle() { const r = state.currentRadius; btn.style.width = btn.style.height = (r * 2) + 'px'; btn.style.transform = `translate3d(${state.btnX - r}px, ${state.btnY - r}px, 0)`; btn.style.fontSize = Math.max(12, r/5) + 'px'; }
         function moveFinger(e) { if (state.isPlaying) { const p = e.touches ? e.touches[0] : e; state.fingerX = p.clientX; state.fingerY = p.clientY; e.preventDefault(); } }
 
-        // === 資料庫核心 (Proxy + Cache Busting) ===
+        // === 資料庫核心 (Proxy + Cache Busting + Signature) ===
         function safeFetch() {
-            // 關鍵修改：加入亂數時間戳記 `&_t=${Date.now()}` 確保 Proxy 不會給我們舊資料
             const bustedUrl = PROXY_BASE + encodeURIComponent(TARGET_URL + `?_t=${Date.now()}`);
             
             return fetch(bustedUrl).then(res => {
@@ -343,9 +357,8 @@
             })
             .then(data => {
                 setStatus('#0f0'); 
-                // 資料結構檢測
                 if (Array.isArray(data)) {
-                    log("格式錯誤(Array)，強制修復中...");
+                    log("格式錯誤(Array)，修復中...");
                     setStatus('#ff0');
                     return { scores: [], global_play_count: 0 };
                 }
@@ -361,7 +374,14 @@
         function loadScores() {
             const rb = document.getElementById('refreshBtn'); rb.style.animation = "spin 2s linear infinite"; 
             safeFetch().then(data => {
-                renderLeaderboard(data.scores || []); 
+                // 過濾無效簽章的成績 (防偽驗證)
+                let cleanScores = (data.scores || []).filter(e => {
+                    const checkSig = generateSignature(e.name, e.score);
+                    // 只有當簽章完全吻合時才顯示 (舊資料因為沒有簽章欄位，會被這裡過濾掉，這是正常的)
+                    return e.signature && e.signature === checkSig;
+                });
+                
+                renderLeaderboard(cleanScores); 
                 globalPlayCount = data.global_play_count || 0;
                 updateIDDisplay();
                 rb.style.animation = "none"; 
@@ -384,19 +404,19 @@
             
             safeFetch().then(data => {
                 let list = data.scores || [];
-                let gCount = (data.global_play_count || 0) + 1; // 增加世界計數
+                let gCount = (data.global_play_count || 0) + 1;
                 
-                list.push({ name: playerName, score: newScore, date: Date.now() });
+                // 產生簽章
+                const sig = generateSignature(playerName, newScore);
+                
+                // 加入帶有簽章的數據
+                list.push({ name: playerName, score: newScore, date: Date.now(), signature: sig });
                 list.sort((a, b) => b.score - a.score); 
                 list = list.slice(0, 20); 
 
-                log(`寫入數據: Rank=${list.length}, Global=${gCount}`);
+                log(`寫入: Rank=${list.length}, Global=${gCount}`);
                 
-                // 寫入也透過 Proxy，注意這裡是 POST
-                // corsproxy.io 有時對 POST 支援不佳，如果這裡還是失敗，我們可能需要換策略
-                // 但目前先加上 cache busting 試試
                 const postUrl = PROXY_BASE + encodeURIComponent(TARGET_URL);
-                
                 return fetch(postUrl, { 
                     method: 'POST', 
                     headers: { 'Content-Type': 'application/json' }, 
