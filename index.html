@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>流逝：生存挑戰</title>
+    <title>流逝：生存挑戰 (v2.0)</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;600&display=swap" rel="stylesheet">
     
     <style>
@@ -25,6 +25,20 @@
             position: relative;
             touch-action: none; 
             -webkit-touch-callout: none;
+        }
+
+        /* === Debug 狀態燈 === */
+        #status-light {
+            position: absolute; top: 10px; left: 10px;
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #ccc; z-index: 300;
+            box-shadow: 0 0 5px rgba(0,0,0,0.2);
+        }
+        #debug-log {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 100px;
+            background: rgba(0,0,0,0.8); color: #0f0; font-family: monospace; font-size: 10px;
+            overflow-y: scroll; padding: 10px; z-index: 300; display: none; /* 預設隱藏，點擊狀態燈開啟 */
+            pointer-events: auto;
         }
 
         /* === 層級 0：背景 === */
@@ -50,7 +64,6 @@
             border: 1px solid rgba(0,0,0,0.1); border-radius: 50%;
             transition: 0.3s; background: rgba(255,255,255,0.2);
         }
-        #mute-btn:active { transform: scale(0.9); }
 
         /* === 層級 5：排行榜 === */
         #leaderboard {
@@ -160,6 +173,9 @@
         <source src="https://files.freemusicarchive.org/storage-freemusicarchive-org/music/no_curator/Kevin_MacLeod/Classical_Sampler/Kevin_MacLeod_-_Erik_Satie_Gymnopedie_No_1.mp3" type="audio/mpeg">
     </audio>
 
+    <div id="status-light" onclick="toggleDebug()"></div>
+    <div id="debug-log"></div>
+
     <div id="mute-btn" onclick="toggleMute()">🔇</div>
     <div id="roach-layer"></div>
     <div id="zen-bg"></div>
@@ -188,7 +204,6 @@
     <div id="btn">觸碰</div>
 
     <script>
-        // === 資料庫設定 ===
         const PANTRY_ID = "3b037575-e357-4684-9646-47f5b3ff2ee7"; 
         const BASKET_NAME = "Rank_v1"; 
         const API_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`;
@@ -197,13 +212,23 @@
 
         const btn = document.getElementById('btn'), timerDisplay = document.getElementById('timer'), msgDisplay = document.getElementById('msg'), roachLayer = document.getElementById('roach-layer'), bgm = document.getElementById('bgm'), muteBtn = document.getElementById('mute-btn');
         const scoreList = document.getElementById('scoreList'), nameModal = document.getElementById('name-modal'), inputName = document.getElementById('playerNameInput'), idDisplay = document.getElementById('player-id-display');
+        const statusLight = document.getElementById('status-light'), debugLog = document.getElementById('debug-log');
 
         let isMuted = true; bgm.volume = 0.6; bgm.muted = true;
         let playerName = localStorage.getItem('lastPlayerName') || "";
         let playCount = parseInt(localStorage.getItem('roach_playCount') || 0);
         let globalPlayCount = 0; 
+        let isSubmitting = false; // 寫入鎖，防止衝突
 
         if(playerName) inputName.value = playerName;
+
+        // === Debug Logger ===
+        function log(msg) {
+            console.log(msg);
+            debugLog.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}<br>` + debugLog.innerHTML;
+        }
+        function toggleDebug() { debugLog.style.display = debugLog.style.display === 'none' ? 'block' : 'none'; }
+        function setStatus(color) { statusLight.style.background = color; }
 
         // === State ===
         let state = {
@@ -222,9 +247,15 @@
 
         function toggleMute() { isMuted = !isMuted; bgm.muted = isMuted; muteBtn.innerText = isMuted ? "🔇" : "🔊"; }
 
-        // === 初始化與定時更新 ===
-        setTimeout(loadScores, 500);
-        setInterval(refreshGlobalCount, 2000);
+        // === 初始化 ===
+        setTimeout(() => {
+            log("初始化連線...");
+            loadScores();
+        }, 500);
+
+        setInterval(() => {
+            if (!isSubmitting) refreshGlobalCount(); // 只有在沒寫入時才讀取
+        }, 2000);
 
         function updateIDDisplay() {
             idDisplay.innerHTML = `${playerName} <span class="play-count">· 個人: ${playCount}</span><span class="global-count">· 世界: ${globalPlayCount}</span>`;
@@ -234,30 +265,24 @@
             let val = inputName.value.trim(); if(!val) return alert("請留名");
             playerName = val; localStorage.setItem('lastPlayerName', playerName);
             nameModal.style.display = 'none'; btn.style.display = 'flex';
-            updateIDDisplay();
-            bgm.play().catch(e => {});
+            updateIDDisplay(); bgm.play().catch(e => {});
             resetState(); loadScores();
         }
 
+        // === 遊戲核心 ===
         function gameLoop() {
             if (!state.isPlaying) return;
             const elapsed = (Date.now() - state.startTime) / 1000;
             timerDisplay.innerHTML = elapsed.toFixed(2) + " <small>SECONDS</small>";
             state.currentRadius = elapsed < CFG.shrinkTime ? CFG.startRadius - ((CFG.startRadius - CFG.minRadius) * (elapsed / CFG.shrinkTime)) : CFG.minRadius;
             if (elapsed > 10 && Math.random() < (0.02 + (elapsed - 10) * 0.002) && roachLayer.childElementCount < CFG.maxRoaches) spawnRoach();
-
             const distToTarget = Math.hypot(state.targetX - state.btnX, state.targetY - state.btnY);
-            if (distToTarget < 100 || Math.random() < 0.02) { 
-                const m = state.currentRadius + 20; 
-                state.targetX = m + Math.random() * (window.innerWidth - m*2); state.targetY = m + Math.random() * (window.innerHeight - m*2);
-            }
+            if (distToTarget < 100 || Math.random() < 0.02) { const m = state.currentRadius + 20; state.targetX = m + Math.random() * (window.innerWidth - m*2); state.targetY = m + Math.random() * (window.innerHeight - m*2); }
             const dx = state.targetX - state.btnX, dy = state.targetY - state.btnY, dist = Math.hypot(dx, dy);
             const speed = 1.5 + (elapsed / 8); 
             state.vx += ((dx/dist * speed) - state.vx) * 0.02; state.vy += ((dy/dist * speed) - state.vy) * 0.02;
             state.btnX += state.vx; state.btnY += state.vy;
-
             if (elapsed > 30) btn.style.backgroundColor = elapsed > 60 ? "var(--dusty-pink)" : "var(--muted-gold)";
-
             if (elapsed > 10 && state.fadeMode === 0) { if (Math.random() < (0.005 + (elapsed-10)*0.0001)) { state.fadeMode = 1; state.fadeFloor = 0.4 + Math.random() * 0.2; } }
             if (state.fadeMode === 1) { state.btnOpacity -= 0.005; if (state.btnOpacity <= state.fadeFloor) { state.btnOpacity = state.fadeFloor; state.fadeMode = 2; } }
             else if (state.fadeMode === 2) { state.btnOpacity += 0.005; if (state.btnOpacity >= 0.9) { state.btnOpacity = 0.9; state.fadeMode = 0; } }
@@ -267,20 +292,8 @@
             if (Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY) > state.currentRadius + 25) gameOver(elapsed);
             if (state.isPlaying) loopId = requestAnimationFrame(gameLoop);
         }
-
-        function spawnRoach() {
-            const r = document.createElement('div'); r.innerText = '🪳'; r.className = 'roach';
-            r.style.fontSize = `${30 + Math.random() * 50}px`;
-            const s = Math.floor(Math.random()*4), w = window.innerWidth, h = window.innerHeight, o = 100;
-            let x, y; if(s===0){x=Math.random()*w;y=-o}else if(s===1){x=w+o;y=Math.random()*h}else if(s===2){x=Math.random()*w;y=h+o}else{x=-o;y=Math.random()*h}
-            r.style.left=x+'px'; r.style.top=y+'px'; roachLayer.appendChild(r); roachBrain(r, x, y);
-        }
-        function roachBrain(r, cx, cy) {
-            if (!r.parentNode) return;
-            if (Math.hypot(state.btnX - cx, state.btnY - cy) < 50) { setTimeout(() => { if(r.parentNode) moveRoachTo(r, cx, cy, Math.random()>0.5?window.innerWidth+200:-200, Math.random()>0.5?window.innerHeight+200:-200, 500, () => r.remove()); }, 200); return; }
-            if (Math.random() < 0.3) setTimeout(() => roachBrain(r, cx, cy), 100 + Math.random()*200);
-            else { const a = Math.atan2(state.btnY - cy, state.btnX - cx) + (Math.random()-0.5); const d = 50 + Math.random()*100, tm = 50 + Math.random()*100; moveRoachTo(r, cx, cy, cx+Math.cos(a)*d, cy+Math.sin(a)*d, tm, () => roachBrain(r, cx+Math.cos(a)*d, cy+Math.sin(a)*d)); }
-        }
+        function spawnRoach() { const r = document.createElement('div'); r.innerText = '🪳'; r.className = 'roach'; r.style.fontSize = `${30 + Math.random() * 50}px`; const s = Math.floor(Math.random()*4), w = window.innerWidth, h = window.innerHeight, o = 100; let x, y; if(s===0){x=Math.random()*w;y=-o}else if(s===1){x=w+o;y=Math.random()*h}else if(s===2){x=Math.random()*w;y=h+o}else{x=-o;y=Math.random()*h} r.style.left=x+'px'; r.style.top=y+'px'; roachLayer.appendChild(r); roachBrain(r, x, y); }
+        function roachBrain(r, cx, cy) { if (!r.parentNode) return; if (Math.hypot(state.btnX - cx, state.btnY - cy) < 50) { setTimeout(() => { if(r.parentNode) moveRoachTo(r, cx, cy, Math.random()>0.5?window.innerWidth+200:-200, Math.random()>0.5?window.innerHeight+200:-200, 500, () => r.remove()); }, 200); return; } if (Math.random() < 0.3) setTimeout(() => roachBrain(r, cx, cy), 100 + Math.random()*200); else { const a = Math.atan2(state.btnY - cy, state.btnX - cx) + (Math.random()-0.5); const d = 50 + Math.random()*100, tm = 50 + Math.random()*100; moveRoachTo(r, cx, cy, cx+Math.cos(a)*d, cy+Math.sin(a)*d, tm, () => roachBrain(r, cx+Math.cos(a)*d, cy+Math.sin(a)*d)); } }
         function moveRoachTo(r, sx, sy, ex, ey, d, cb) { r.style.transform = `rotate(${Math.atan2(ey-sy, ex-sx)*180/Math.PI + 90}deg)`; r.style.transition = `top ${d}ms linear, left ${d}ms linear`; r.style.left = ex + 'px'; r.style.top = ey + 'px'; setTimeout(cb, d); }
 
         function startGame(e) {
@@ -289,7 +302,7 @@
             if (Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY) > state.currentRadius) return;
             
             playCount++; localStorage.setItem('roach_playCount', playCount);
-            incrementGlobalCount(); // 修復後的寫入邏輯
+            // 遊戲開始時不寫入 DB，只在結束時寫入，減少負擔
             updateIDDisplay();
 
             state.isPlaying = true; state.startTime = Date.now();
@@ -317,17 +330,31 @@
         function updateBtnStyle() { const r = state.currentRadius; btn.style.width = btn.style.height = (r * 2) + 'px'; btn.style.transform = `translate3d(${state.btnX - r}px, ${state.btnY - r}px, 0)`; btn.style.fontSize = Math.max(12, r/5) + 'px'; }
         function moveFinger(e) { if (state.isPlaying) { const p = e.touches ? e.touches[0] : e; state.fingerX = p.clientX; state.fingerY = p.clientY; e.preventDefault(); } }
 
-        // === 資料庫核心邏輯修復版 ===
-        
-        // 通用讀取：會自動修復壞掉的資料結構 (把陣列轉回物件)
+        // === 資料庫核心 (嚴格修復版) ===
         function safeFetch() {
-            return fetch(API_URL).then(res => res.json())
-                .then(data => {
-                    // 如果資料庫是空陣列 [] (被清空過)，強制轉型為正確物件
-                    if (Array.isArray(data)) return { scores: [], global_play_count: 0 };
-                    return data; 
-                })
-                .catch(() => ({ scores: [], global_play_count: 0 }));
+            return fetch(API_URL).then(res => {
+                if(!res.ok) throw new Error("API Error " + res.status);
+                return res.json();
+            })
+            .then(data => {
+                setStatus('#0f0'); // 綠燈
+                // 數據結構檢測與自動修復
+                if (Array.isArray(data)) {
+                    log("警告: DB 格式為陣列，強制修復中...");
+                    setStatus('#ff0'); // 黃燈
+                    return { scores: [], global_play_count: 0 };
+                }
+                if (!data || typeof data !== 'object') {
+                    return { scores: [], global_play_count: 0 };
+                }
+                return data;
+            })
+            .catch(e => {
+                log("讀取失敗: " + e.message);
+                setStatus('#f00'); // 紅燈
+                // 即使失敗也回傳一個空的本地結構，讓遊戲不崩潰
+                return { scores: [], global_play_count: globalPlayCount };
+            });
         }
 
         function loadScores() {
@@ -349,33 +376,39 @@
             });
         }
 
-        function incrementGlobalCount() {
+        function submitScore(newScore) {
+            isSubmitting = true; // 上鎖
+            msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(上傳中...)", "<span style='color:#aaa; font-size:12px'>(紀錄中...)</span>");
+            log("準備上傳分數...");
+            
             safeFetch().then(data => {
-                let currentCount = data.global_play_count || 0;
-                let scores = data.scores || [];
-                // 寫入時強制確保結構正確
+                let list = data.scores || [];
+                let gCount = (data.global_play_count || 0) + 1; // 在這裡才增加世界計數
+                
+                list.push({ name: playerName, score: newScore, date: Date.now() });
+                list.sort((a, b) => b.score - a.score); 
+                list = list.slice(0, 20); 
+
+                log(`寫入數據: Rank=${list.length}, Global=${gCount}`);
+                
                 return fetch(API_URL, { 
                     method: 'POST', 
                     headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify({ scores: scores, global_play_count: currentCount + 1 }) 
+                    body: JSON.stringify({ scores: list, global_play_count: gCount }) 
                 });
-            }).then(() => {
-                globalPlayCount++;
-                updateIDDisplay();
-                console.log("Global count updated:", globalPlayCount);
-            }).catch(e => console.log("Count update failed:", e));
-        }
-
-        function submitScore(newScore) {
-            msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(上傳中...)", "<span style='color:#aaa; font-size:12px'>(紀錄中...)</span>");
-            safeFetch().then(data => {
-                let list = data.scores || [];
-                let gCount = data.global_play_count || globalPlayCount; 
-                list.push({ name: playerName, score: newScore, date: Date.now() });
-                list.sort((a, b) => b.score - a.score); list = list.slice(0, 20); 
-                return fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scores: list, global_play_count: gCount }) });
-            }).then(() => { msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(紀錄中...)", "<span style='color:var(--sage-green); font-size:12px'>(已永恆)</span>"); loadScores(); })
-            .catch(() => msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(紀錄中...)", "<span style='color:var(--dusty-pink); font-size:12px'>(遺失)</span>"));
+            })
+            .then(res => {
+                if(!res.ok) throw new Error("Write Error " + res.status);
+                log("上傳成功");
+                msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(紀錄中...)", "<span style='color:var(--sage-green); font-size:12px'>(已永恆)</span>");
+                loadScores();
+                isSubmitting = false; // 解鎖
+            })
+            .catch(e => {
+                log("上傳炸裂: " + e.message);
+                msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(紀錄中...)", "<span style='color:var(--dusty-pink); font-size:12px'>(遺失)</span>");
+                isSubmitting = false; // 解鎖
+            });
         }
 
         function renderLeaderboard(list) {
