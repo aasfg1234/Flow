@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>流逝：生存挑戰 (v2.1 Proxy)</title>
+    <title>流逝：生存挑戰 (v2.2 Sync Fix)</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;600&display=swap" rel="stylesheet">
     
     <style>
@@ -207,11 +207,8 @@
     <script>
         const PANTRY_ID = "3b037575-e357-4684-9646-47f5b3ff2ee7"; 
         const BASKET_NAME = "Rank_v1"; 
-        
-        // === 關鍵修改：加入 CORS Proxy 繞過 Safari 限制 ===
-        // 我們使用 corsproxy.io 來轉發請求，這能解決 "Load failed" 問題
+        const PROXY_BASE = "https://corsproxy.io/?";
         const TARGET_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`;
-        const PROXY_URL = "https://corsproxy.io/?" + encodeURIComponent(TARGET_URL);
 
         const CFG = { startRadius: 130, minRadius: 60, shrinkTime: 90, maxRoaches: 60 };
 
@@ -254,11 +251,11 @@
 
         // === 初始化 ===
         setTimeout(() => {
-            log("初始化連線 (Proxy Mode)...");
+            log("初始化連線...");
             loadScores();
         }, 500);
 
-        // 降速：改為 5 秒更新一次，避免太頻繁被擋
+        // 讀取同步頻率 (5秒)
         setInterval(() => {
             if (!isSubmitting) refreshGlobalCount(); 
         }, 5000);
@@ -335,26 +332,28 @@
         function updateBtnStyle() { const r = state.currentRadius; btn.style.width = btn.style.height = (r * 2) + 'px'; btn.style.transform = `translate3d(${state.btnX - r}px, ${state.btnY - r}px, 0)`; btn.style.fontSize = Math.max(12, r/5) + 'px'; }
         function moveFinger(e) { if (state.isPlaying) { const p = e.touches ? e.touches[0] : e; state.fingerX = p.clientX; state.fingerY = p.clientY; e.preventDefault(); } }
 
-        // === 資料庫核心 (Proxy + AutoFix) ===
+        // === 資料庫核心 (Proxy + Cache Busting) ===
         function safeFetch() {
-            // 使用 PROXY_URL 繞過 CORS
-            return fetch(PROXY_URL).then(res => {
+            // 關鍵修改：加入亂數時間戳記 `&_t=${Date.now()}` 確保 Proxy 不會給我們舊資料
+            const bustedUrl = PROXY_BASE + encodeURIComponent(TARGET_URL + `?_t=${Date.now()}`);
+            
+            return fetch(bustedUrl).then(res => {
                 if(!res.ok) throw new Error("API Error " + res.status);
                 return res.json();
             })
             .then(data => {
                 setStatus('#0f0'); 
+                // 資料結構檢測
                 if (Array.isArray(data)) {
-                    log("格式錯誤(Array)，修復中...");
+                    log("格式錯誤(Array)，強制修復中...");
                     setStatus('#ff0');
                     return { scores: [], global_play_count: 0 };
                 }
                 return data || { scores: [], global_play_count: 0 };
             })
             .catch(e => {
-                log("讀取失敗(Proxy): " + e.message);
+                log("讀取失敗: " + e.message);
                 setStatus('#f00');
-                // 回傳本地暫存值，避免遊戲崩潰
                 return { scores: [], global_play_count: globalPlayCount };
             });
         }
@@ -381,18 +380,24 @@
         function submitScore(newScore) {
             isSubmitting = true;
             msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(上傳中...)", "<span style='color:#aaa; font-size:12px'>(紀錄中...)</span>");
-            log("透過 Proxy 上傳分數...");
+            log("準備上傳...");
             
             safeFetch().then(data => {
                 let list = data.scores || [];
-                let gCount = (data.global_play_count || 0) + 1;
+                let gCount = (data.global_play_count || 0) + 1; // 增加世界計數
                 
                 list.push({ name: playerName, score: newScore, date: Date.now() });
                 list.sort((a, b) => b.score - a.score); 
                 list = list.slice(0, 20); 
 
-                // 寫入也必須透過 Proxy 轉發 (注意：corsproxy.io 支援 POST 轉發)
-                return fetch(PROXY_URL, { 
+                log(`寫入數據: Rank=${list.length}, Global=${gCount}`);
+                
+                // 寫入也透過 Proxy，注意這裡是 POST
+                // corsproxy.io 有時對 POST 支援不佳，如果這裡還是失敗，我們可能需要換策略
+                // 但目前先加上 cache busting 試試
+                const postUrl = PROXY_BASE + encodeURIComponent(TARGET_URL);
+                
+                return fetch(postUrl, { 
                     method: 'POST', 
                     headers: { 'Content-Type': 'application/json' }, 
                     body: JSON.stringify({ scores: list, global_play_count: gCount }) 
