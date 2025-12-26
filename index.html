@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>流逝：生存挑戰 (v2.3 Secured)</title>
+    <title>流逝：生存挑戰 (v2.4 Stable)</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;600&display=swap" rel="stylesheet">
     
     <style>
@@ -210,10 +210,7 @@
         const PROXY_BASE = "https://corsproxy.io/?";
         const TARGET_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`;
         
-        // === 防偽核心設定 ===
-        // 這就是你的「秘密鹽巴」，雖然寫在前端，但對於不會寫程式的人來說已經是天書
         const SECRET_SALT = "TheFlow_Survival_2025_HellMode_Secured";
-
         const CFG = { startRadius: 130, minRadius: 60, shrinkTime: 90, maxRoaches: 60 };
 
         const btn = document.getElementById('btn'), timerDisplay = document.getElementById('timer'), msgDisplay = document.getElementById('msg'), roachLayer = document.getElementById('roach-layer'), bgm = document.getElementById('bgm'), muteBtn = document.getElementById('mute-btn');
@@ -228,16 +225,15 @@
 
         if(playerName) inputName.value = playerName;
 
-        // === 雜湊函式 (簡易防偽簽章) ===
         function generateSignature(name, score) {
             const raw = name + "_" + parseFloat(score).toFixed(2) + "_" + SECRET_SALT;
             let hash = 0;
             for (let i = 0; i < raw.length; i++) {
                 const char = raw.charCodeAt(i);
                 hash = ((hash << 5) - hash) + char;
-                hash = hash & hash; // Convert to 32bit integer
+                hash = hash & hash; 
             }
-            return hash.toString(16); // 回傳 16 進位字串
+            return hash.toString(16); 
         }
 
         // === Logger ===
@@ -267,13 +263,11 @@
 
         // === 初始化 ===
         setTimeout(() => {
-            log("連線中 (Secured)...");
-            loadScores();
+            log("連線中 (Stable)...");
+            loadScores(); // 只有初始化時讀取一次
         }, 500);
 
-        setInterval(() => {
-            if (!isSubmitting) refreshGlobalCount(); 
-        }, 5000);
+        // === 移除 setInterval，改用被動觸發 ===
 
         function updateIDDisplay() {
             idDisplay.innerHTML = `${playerName} <span class="play-count">· 個人: ${playCount}</span><span class="global-count">· 世界: ${globalPlayCount}</span>`;
@@ -287,7 +281,6 @@
             resetState(); loadScores();
         }
 
-        // === Game Loop ===
         function gameLoop() {
             if (!state.isPlaying) return;
             const elapsed = (Date.now() - state.startTime) / 1000;
@@ -321,6 +314,7 @@
             
             playCount++; localStorage.setItem('roach_playCount', playCount);
             updateIDDisplay();
+            // 這裡不呼叫 refreshGlobalCount，避免遊戲一開始就 API Error
 
             state.isPlaying = true; state.startTime = Date.now();
             msgDisplay.style.opacity = '0'; btn.innerText = ""; btn.style.color = "transparent"; 
@@ -347,26 +341,23 @@
         function updateBtnStyle() { const r = state.currentRadius; btn.style.width = btn.style.height = (r * 2) + 'px'; btn.style.transform = `translate3d(${state.btnX - r}px, ${state.btnY - r}px, 0)`; btn.style.fontSize = Math.max(12, r/5) + 'px'; }
         function moveFinger(e) { if (state.isPlaying) { const p = e.touches ? e.touches[0] : e; state.fingerX = p.clientX; state.fingerY = p.clientY; e.preventDefault(); } }
 
-        // === 資料庫核心 (Proxy + Cache Busting + Signature) ===
+        // === 資料庫核心 ===
         function safeFetch() {
             const bustedUrl = PROXY_BASE + encodeURIComponent(TARGET_URL + `?_t=${Date.now()}`);
-            
             return fetch(bustedUrl).then(res => {
+                if(res.status === 429) throw new Error("API Busy (429)");
                 if(!res.ok) throw new Error("API Error " + res.status);
                 return res.json();
             })
             .then(data => {
                 setStatus('#0f0'); 
-                if (Array.isArray(data)) {
-                    log("格式錯誤(Array)，修復中...");
-                    setStatus('#ff0');
-                    return { scores: [], global_play_count: 0 };
-                }
+                if (Array.isArray(data)) return { scores: [], global_play_count: 0 };
                 return data || { scores: [], global_play_count: 0 };
             })
             .catch(e => {
                 log("讀取失敗: " + e.message);
-                setStatus('#f00');
+                if(e.message.includes("429")) setStatus('#ff0'); // 429 亮黃燈
+                else setStatus('#f00');
                 return { scores: [], global_play_count: globalPlayCount };
             });
         }
@@ -374,26 +365,11 @@
         function loadScores() {
             const rb = document.getElementById('refreshBtn'); rb.style.animation = "spin 2s linear infinite"; 
             safeFetch().then(data => {
-                // 過濾無效簽章的成績 (防偽驗證)
-                let cleanScores = (data.scores || []).filter(e => {
-                    const checkSig = generateSignature(e.name, e.score);
-                    // 只有當簽章完全吻合時才顯示 (舊資料因為沒有簽章欄位，會被這裡過濾掉，這是正常的)
-                    return e.signature && e.signature === checkSig;
-                });
-                
+                let cleanScores = (data.scores || []).filter(e => e.signature && e.signature === generateSignature(e.name, e.score));
                 renderLeaderboard(cleanScores); 
                 globalPlayCount = data.global_play_count || 0;
                 updateIDDisplay();
                 rb.style.animation = "none"; 
-            });
-        }
-
-        function refreshGlobalCount() {
-            safeFetch().then(data => {
-                if (data.global_play_count !== undefined && data.global_play_count !== globalPlayCount) {
-                    globalPlayCount = data.global_play_count;
-                    updateIDDisplay();
-                }
             });
         }
 
@@ -405,11 +381,7 @@
             safeFetch().then(data => {
                 let list = data.scores || [];
                 let gCount = (data.global_play_count || 0) + 1;
-                
-                // 產生簽章
                 const sig = generateSignature(playerName, newScore);
-                
-                // 加入帶有簽章的數據
                 list.push({ name: playerName, score: newScore, date: Date.now(), signature: sig });
                 list.sort((a, b) => b.score - a.score); 
                 list = list.slice(0, 20); 
@@ -417,13 +389,10 @@
                 log(`寫入: Rank=${list.length}, Global=${gCount}`);
                 
                 const postUrl = PROXY_BASE + encodeURIComponent(TARGET_URL);
-                return fetch(postUrl, { 
-                    method: 'POST', 
-                    headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify({ scores: list, global_play_count: gCount }) 
-                });
+                return fetch(postUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scores: list, global_play_count: gCount }) });
             })
             .then(res => {
+                if(res.status === 429) throw new Error("API Busy (429)");
                 if(!res.ok) throw new Error("Write Error " + res.status);
                 log("上傳成功");
                 msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(紀錄中...)", "<span style='color:var(--sage-green); font-size:12px'>(已永恆)</span>");
