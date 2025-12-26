@@ -40,7 +40,7 @@
         }
         @keyframes breathe { 0% { transform: scale(1); opacity: 0.5; } 100% { transform: scale(1.1); opacity: 0.8; } }
 
-        /* === 音效控制 (z-index 201) === */
+        /* === 音效控制 === */
         #mute-btn {
             position: absolute; top: 30px; left: 30px; 
             z-index: 201; cursor: pointer;
@@ -52,7 +52,7 @@
         }
         #mute-btn:active { transform: scale(0.9); }
 
-        /* === 層級 5：底層 UI === */
+        /* === 層級 5：排行榜 === */
         #leaderboard {
             position: absolute; bottom: 40px;
             background: rgba(255, 255, 255, 0.4);
@@ -84,7 +84,8 @@
             cursor: crosshair; color: #fff;
             background: var(--sage-green);
             box-shadow: 0 10px 30px rgba(141, 163, 153, 0.4);
-            transition: width 0.1s, height 0.1s, background-color 0.5s, opacity 0.1s; /* 增加 opacity 過渡 */
+            /* 注意：移除了 opacity 的 transition，交給 JS 控制 */
+            transition: width 0.1s, height 0.1s, background-color 0.5s; 
             display: none; will-change: transform, opacity;
             writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 5px;
             opacity: 0.9;
@@ -96,7 +97,7 @@
         }
         @keyframes ripple { 0% { transform: scale(1); opacity: 0.5; } 100% { transform: scale(1.5); opacity: 0; } }
 
-        /* === 層級 60：高層 UI === */
+        /* === 層級 60：UI === */
         #timer {
             position: absolute; top: 10%; 
             font-size: 3.5rem; font-weight: 300; 
@@ -105,42 +106,25 @@
             text-align: center; width: 100%;
             text-shadow: 0 0 20px var(--paper-bg); 
         }
-        #timer small { 
-            font-size: 0.9rem; color: var(--sage-green); 
-            letter-spacing: 5px; display:block; margin-top: 5px; text-transform: uppercase;
-        }
+        #timer small { font-size: 0.9rem; color: var(--sage-green); display:block; margin-top: 5px; text-transform: uppercase; }
 
         #msg {
             position: absolute; top: 25%; left: 50%; transform: translateX(-50%);
-            min-width: 220px;
-            font-size: 18px; color: var(--ink-black); font-weight: 600; 
+            min-width: 220px; font-size: 18px; color: var(--ink-black); font-weight: 600; 
             opacity: 0; text-align: center; letter-spacing: 2px;
-            background: rgba(255, 255, 255, 0.8);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            padding: 20px 30px; border-radius: 50px;
-            border: 1px solid rgba(0,0,0,0.05);
+            background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px);
+            padding: 20px 30px; border-radius: 50px; border: 1px solid rgba(0,0,0,0.05);
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
             z-index: 60; pointer-events: none; transition: opacity 0.3s;
         }
 
-        #player-id-display {
-            position: absolute; top: 30px; right: 30px; 
-            font-size: 11px; color: #aaa; pointer-events: auto; 
-            letter-spacing: 1px; font-family: sans-serif; z-index: 60;
-        }
+        #player-id-display { position: absolute; top: 30px; right: 30px; font-size: 11px; color: #aaa; pointer-events: auto; letter-spacing: 1px; font-family: sans-serif; z-index: 60; }
 
         /* === 層級 100：蟑螂層 === */
-        #roach-layer {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 100; pointer-events: none; overflow: hidden;
-        }
-        .roach {
-            position: absolute; font-size: 40px; 
-            filter: drop-shadow(6px 8px 5px rgba(0,0,0,0.3));
-            will-change: transform; transition: transform 0.1s linear; 
-        }
+        #roach-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; pointer-events: none; overflow: hidden; }
+        .roach { position: absolute; font-size: 40px; filter: drop-shadow(6px 8px 5px rgba(0,0,0,0.3)); will-change: transform; transition: transform 0.1s linear; }
 
-        /* === 層級 200：登入彈窗 === */
+        /* === 層級 200：登入 === */
         #name-modal {
             position: absolute; top:0; left:0; width:100%; height:100%;
             background: var(--paper-bg); z-index: 200;
@@ -158,23 +142,19 @@
             margin-bottom: 40px; color: var(--ink-black); font-family: var(--font-serif);
             border-radius: 0; outline: none; transition: 0.3s;
         }
-        input:focus { border-bottom-color: var(--sage-green); }
         button { 
             padding: 12px 40px; font-size: 14px; background: transparent; color: var(--ink-black); 
             border: 1px solid var(--ink-black); font-family: var(--font-serif); cursor: pointer;
             letter-spacing: 3px; border-radius: 50px; transition: 0.3s;
         }
-        button:hover { background: var(--ink-black); color: #fff; transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
     </style>
 </head>
 <body oncontextmenu="return false;">
-    
     <audio id="bgm" loop>
         <source src="https://files.freemusicarchive.org/storage-freemusicarchive-org/music/no_curator/Kevin_MacLeod/Classical_Sampler/Kevin_MacLeod_-_Erik_Satie_Gymnopedie_No_1.mp3" type="audio/mpeg">
     </audio>
 
     <div id="mute-btn" onclick="toggleMute()">🔇</div>
-
     <div id="roach-layer"></div>
     <div id="zen-bg"></div>
 
@@ -202,73 +182,56 @@
     <div id="btn">觸碰</div>
 
     <script>
-        // === 配置設定 (ID 已更新) ===
         const PANTRY_ID = "3b037575-e357-4684-9646-47f5b3ff2ee7"; 
         const BASKET_NAME = "Rank_v1"; 
-        const CFG = { 
-            startRadius: 130, 
-            minRadius: 60, 
-            shrinkTime: 90,
-            maxRoaches: 60 
-        };
+        const CFG = { startRadius: 130, minRadius: 60, shrinkTime: 90, maxRoaches: 60 };
 
-        const btn = document.getElementById('btn'), timerDisplay = document.getElementById('timer'), msgDisplay = document.getElementById('msg'), scoreList = document.getElementById('scoreList'), nameModal = document.getElementById('name-modal'), inputName = document.getElementById('playerNameInput'), idDisplay = document.getElementById('player-id-display'), roachLayer = document.getElementById('roach-layer'), bgm = document.getElementById('bgm'), muteBtn = document.getElementById('mute-btn');
+        const btn = document.getElementById('btn'), timerDisplay = document.getElementById('timer'), msgDisplay = document.getElementById('msg'), roachLayer = document.getElementById('roach-layer'), bgm = document.getElementById('bgm'), muteBtn = document.getElementById('mute-btn');
+        const scoreList = document.getElementById('scoreList'), nameModal = document.getElementById('name-modal'), inputName = document.getElementById('playerNameInput'), idDisplay = document.getElementById('player-id-display');
 
-        let isMuted = true;
-        bgm.volume = 0.6; bgm.muted = true;
+        let isMuted = true; bgm.volume = 0.6; bgm.muted = true;
         let playerName = localStorage.getItem('lastPlayerName') || "";
         if(playerName) inputName.value = playerName;
 
+        // === State 新增：btnOpacity, fadeMode (0:穩, 1:消逝, 2:甦醒) ===
         let state = {
             isPlaying: false, startTime: 0,
             btnX: window.innerWidth / 2, btnY: window.innerHeight / 2,
             targetX: window.innerWidth / 2, targetY: window.innerHeight / 2,
             vx: 0, vy: 0, 
-            fingerX: 0, fingerY: 0, currentRadius: CFG.startRadius
+            fingerX: 0, fingerY: 0, currentRadius: CFG.startRadius,
+            btnOpacity: 0.9, fadeMode: 0 
         };
         let loopId = null;
 
         document.addEventListener('gesturestart', e => e.preventDefault());
         let lastTouchEnd = 0;
-        document.addEventListener('touchend', event => {
-            const now = Date.now();
-            if (now - lastTouchEnd <= 300) event.preventDefault();
-            lastTouchEnd = now;
-        }, false);
+        document.addEventListener('touchend', e => { if (Date.now() - lastTouchEnd <= 300) e.preventDefault(); lastTouchEnd = Date.now(); }, false);
 
-        function toggleMute() {
-            isMuted = !isMuted;
-            bgm.muted = isMuted;
-            muteBtn.innerText = isMuted ? "🔇" : "🔊";
-        }
+        function toggleMute() { isMuted = !isMuted; bgm.muted = isMuted; muteBtn.innerText = isMuted ? "🔇" : "🔊"; }
 
         setTimeout(loadScores, 500);
 
         function saveName() {
-            let val = inputName.value.trim();
-            if(!val) return alert("請留名");
+            let val = inputName.value.trim(); if(!val) return alert("請留名");
             playerName = val; localStorage.setItem('lastPlayerName', playerName);
             nameModal.style.display = 'none'; btn.style.display = 'flex';
-            idDisplay.innerText = `${playerName}`;
-            bgm.play().catch(e => {});
+            idDisplay.innerText = `${playerName}`; bgm.play().catch(e => {});
             resetState(); loadScores();
         }
 
         function gameLoop() {
             if (!state.isPlaying) return;
-            const now = Date.now();
-            const elapsed = (now - state.startTime) / 1000;
+            const elapsed = (Date.now() - state.startTime) / 1000;
             timerDisplay.innerHTML = elapsed.toFixed(2) + " <small>SECONDS</small>";
 
-            // 圓圈縮小
+            // 圓圈大小
             state.currentRadius = elapsed < CFG.shrinkTime ? CFG.startRadius - ((CFG.startRadius - CFG.minRadius) * (elapsed / CFG.shrinkTime)) : CFG.minRadius;
 
             // 蟑螂生成
-            if (elapsed > 10 && Math.random() < (0.02 + (elapsed - 10) * 0.002) && roachLayer.childElementCount < CFG.maxRoaches) {
-                spawnRoach();
-            }
+            if (elapsed > 10 && Math.random() < (0.02 + (elapsed - 10) * 0.002) && roachLayer.childElementCount < CFG.maxRoaches) spawnRoach();
 
-            // 按鈕移動物理
+            // 物理移動
             const distToTarget = Math.hypot(state.targetX - state.btnX, state.targetY - state.btnY);
             if (distToTarget < 100 || Math.random() < 0.02) { 
                 const m = state.currentRadius + 20; 
@@ -277,43 +240,41 @@
             }
             const dx = state.targetX - state.btnX, dy = state.targetY - state.btnY, dist = Math.hypot(dx, dy);
             const speed = 1.5 + (elapsed / 8); 
-            state.vx += ((dx / dist * speed) - state.vx) * 0.02;
-            state.vy += ((dy / dist * speed) - state.vy) * 0.02;
+            state.vx += ((dx/dist * speed) - state.vx) * 0.02; state.vy += ((dy/dist * speed) - state.vy) * 0.02;
             state.btnX += state.vx; state.btnY += state.vy;
 
-            // === 變色與閃爍邏輯 (Visual Glitch) ===
-            let op = 0.9; // 基礎透明度
+            // 顏色隨時間變化
             if (elapsed > 30) btn.style.backgroundColor = elapsed > 60 ? "var(--dusty-pink)" : "var(--muted-gold)";
-            
-            // 10秒後開始接觸不良
-            if (elapsed > 10) {
-                 // 隨機閃爍：機率隨時間增加 (最高 15% 機率發生閃爍)
-                 const glitchChance = Math.min(0.15, (elapsed - 10) * 0.002);
-                 if (Math.random() < glitchChance) {
-                     // 瞬間變淡，模擬燈泡快壞掉 (0.1 ~ 0.5)
-                     op = 0.1 + Math.random() * 0.4;
-                 }
+
+            // === 視覺消逝邏輯 (Visual Decay) ===
+            // 1. 觸發
+            if (elapsed > 10 && state.fadeMode === 0) {
+                if (Math.random() < (0.005 + (elapsed-10)*0.0001)) state.fadeMode = 1; // Start Fade Out
             }
-            btn.style.opacity = op;
+            // 2. 執行
+            if (state.fadeMode === 1) {
+                state.btnOpacity -= 0.008; // 緩慢變淡
+                if (state.btnOpacity <= 0.05) { state.btnOpacity = 0.05; state.fadeMode = 2; } // 觸底反彈
+            } else if (state.fadeMode === 2) {
+                state.btnOpacity += 0.008; // 緩慢恢復
+                if (state.btnOpacity >= 0.9) { state.btnOpacity = 0.9; state.fadeMode = 0; } // 恢復完成
+            } else {
+                state.btnOpacity = 0.9;
+            }
+            btn.style.opacity = state.btnOpacity;
 
             updateBtnStyle();
 
-            // 判斷出界
             if (Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY) > state.currentRadius + 25) gameOver(elapsed);
             if (state.isPlaying) loopId = requestAnimationFrame(gameLoop);
         }
 
         function spawnRoach() {
-            const roach = document.createElement('div'); roach.innerText = '🪳'; roach.className = 'roach';
-            const size = 30 + Math.random() * 50; roach.style.fontSize = `${size}px`;
-            const side = Math.floor(Math.random() * 4), w = window.innerWidth, h = window.innerHeight, offset = 100;
-            let x, y;
-            if (side===0) { x = Math.random() * w; y = -offset; }
-            else if (side===1) { x = w + offset; y = Math.random() * h; }
-            else if (side===2) { x = Math.random() * w; y = h + offset; }
-            else { x = -offset; y = Math.random() * h; }
-            roach.style.left = x + 'px'; roach.style.top = y + 'px';
-            roachLayer.appendChild(roach); roachBrain(roach, x, y);
+            const r = document.createElement('div'); r.innerText = '🪳'; r.className = 'roach';
+            r.style.fontSize = `${30 + Math.random() * 50}px`;
+            const s = Math.floor(Math.random()*4), w = window.innerWidth, h = window.innerHeight, o = 100;
+            let x, y; if(s===0){x=Math.random()*w;y=-o}else if(s===1){x=w+o;y=Math.random()*h}else if(s===2){x=Math.random()*w;y=h+o}else{x=-o;y=Math.random()*h}
+            r.style.left=x+'px'; r.style.top=y+'px'; roachLayer.appendChild(r); roachBrain(r, x, y);
         }
 
         function roachBrain(r, cx, cy) {
@@ -324,9 +285,9 @@
             }
             if (Math.random() < 0.3) setTimeout(() => roachBrain(r, cx, cy), 100 + Math.random()*200);
             else {
-                const ang = Math.atan2(state.btnY - cy, state.btnX - cx) + (Math.random()-0.5);
-                const dash = 50 + Math.random()*100, dur = 50 + Math.random()*100;
-                moveRoachTo(r, cx, cy, cx+Math.cos(ang)*dash, cy+Math.sin(ang)*dash, dur, () => roachBrain(r, cx+Math.cos(ang)*dash, cy+Math.sin(ang)*dash));
+                const a = Math.atan2(state.btnY - cy, state.btnX - cx) + (Math.random()-0.5);
+                const d = 50 + Math.random()*100, tm = 50 + Math.random()*100;
+                moveRoachTo(r, cx, cy, cx+Math.cos(a)*d, cy+Math.sin(a)*d, tm, () => roachBrain(r, cx+Math.cos(a)*d, cy+Math.sin(a)*d));
             }
         }
 
@@ -342,8 +303,7 @@
             state.fingerX = p.clientX; state.fingerY = p.clientY;
             if (Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY) > state.currentRadius) return;
             state.isPlaying = true; state.startTime = Date.now();
-            msgDisplay.style.opacity = '0';
-            btn.innerText = ""; btn.style.color = "transparent"; 
+            msgDisplay.style.opacity = '0'; btn.innerText = ""; btn.style.color = "transparent"; 
             bgm.play().catch(e => {});
             loopId = requestAnimationFrame(gameLoop);
         }
@@ -353,7 +313,7 @@
             if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
             bgm.pause(); bgm.currentTime = 0;
             btn.innerText = "散了"; btn.style.color = "#fff"; btn.style.backgroundColor = "#d8c3c3"; 
-            msgDisplay.innerHTML = `緣分已盡<br><span style="font-family:'Roboto',sans-serif; font-size:2rem; color:var(--ink-black); display:block; margin:5px 0;">${score.toFixed(2)}</span><span style="font-size:12px; color:#666">(上傳中...)</span>`;
+            msgDisplay.innerHTML = `緣分已盡<br><span style="font-family:'Roboto',sans-serif; font-size:2rem; color:var(--ink-black); display:block; margin:5px 0;">${score.toFixed(2)}</span><small>(上傳中...)</small>`;
             msgDisplay.style.opacity = '1';
             submitScore(score); setTimeout(resetState, 2000);
         }
@@ -361,6 +321,7 @@
         function resetState() {
             state.btnX = window.innerWidth/2; state.btnY = window.innerHeight/2; state.vx = 0; state.vy = 0;
             state.targetX = state.btnX; state.targetY = state.btnY; state.currentRadius = CFG.startRadius;
+            state.btnOpacity = 0.9; state.fadeMode = 0; // 重置透明度狀態
             roachLayer.innerHTML = ''; msgDisplay.style.opacity = '0';
             btn.style.backgroundColor = "var(--sage-green)"; btn.style.boxShadow = "0 10px 30px rgba(141, 163, 153, 0.4)";
             btn.innerText = "觸碰"; btn.style.color = "#fff"; btn.style.opacity = 0.9;
@@ -377,10 +338,10 @@
         function moveFinger(e) { if (state.isPlaying) { const p = e.touches ? e.touches[0] : e; state.fingerX = p.clientX; state.fingerY = p.clientY; e.preventDefault(); } }
 
         function loadScores() {
-            const refreshBtn = document.getElementById('refreshBtn'); refreshBtn.style.animation = "spin 2s linear infinite"; 
-            const url = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`;
-            fetch(url).then(res => res.json()).then(data => { renderLeaderboard(data.scores || []); refreshBtn.style.animation = "none"; })
-            .catch(() => { scoreList.innerHTML = `<div class='loading'>全新領域 (暫無紀錄)</div>`; refreshBtn.style.animation = "none"; });
+            const rb = document.getElementById('refreshBtn'); rb.style.animation = "spin 2s linear infinite"; 
+            fetch(`https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`).then(res => res.json())
+            .then(data => { renderLeaderboard(data.scores || []); rb.style.animation = "none"; })
+            .catch(() => { scoreList.innerHTML = `<div class='loading'>全新領域</div>`; rb.style.animation = "none"; });
         }
 
         function submitScore(newScore) {
