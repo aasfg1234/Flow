@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>流逝：生存挑戰 (v2.0)</title>
+    <title>流逝：生存挑戰 (v2.1 Proxy)</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;600&display=swap" rel="stylesheet">
     
     <style>
@@ -33,12 +33,13 @@
             width: 8px; height: 8px; border-radius: 50%;
             background: #ccc; z-index: 300;
             box-shadow: 0 0 5px rgba(0,0,0,0.2);
+            transition: background 0.3s;
         }
         #debug-log {
-            position: absolute; bottom: 0; left: 0; width: 100%; height: 100px;
-            background: rgba(0,0,0,0.8); color: #0f0; font-family: monospace; font-size: 10px;
-            overflow-y: scroll; padding: 10px; z-index: 300; display: none; /* 預設隱藏，點擊狀態燈開啟 */
-            pointer-events: auto;
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 120px;
+            background: rgba(0,0,0,0.85); color: #0f0; font-family: monospace; font-size: 10px;
+            overflow-y: scroll; padding: 10px; z-index: 300; display: none;
+            pointer-events: auto; white-space: pre-wrap;
         }
 
         /* === 層級 0：背景 === */
@@ -206,7 +207,11 @@
     <script>
         const PANTRY_ID = "3b037575-e357-4684-9646-47f5b3ff2ee7"; 
         const BASKET_NAME = "Rank_v1"; 
-        const API_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`;
+        
+        // === 關鍵修改：加入 CORS Proxy 繞過 Safari 限制 ===
+        // 我們使用 corsproxy.io 來轉發請求，這能解決 "Load failed" 問題
+        const TARGET_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET_NAME}`;
+        const PROXY_URL = "https://corsproxy.io/?" + encodeURIComponent(TARGET_URL);
 
         const CFG = { startRadius: 130, minRadius: 60, shrinkTime: 90, maxRoaches: 60 };
 
@@ -218,14 +223,14 @@
         let playerName = localStorage.getItem('lastPlayerName') || "";
         let playCount = parseInt(localStorage.getItem('roach_playCount') || 0);
         let globalPlayCount = 0; 
-        let isSubmitting = false; // 寫入鎖，防止衝突
+        let isSubmitting = false;
 
         if(playerName) inputName.value = playerName;
 
-        // === Debug Logger ===
+        // === Logger ===
         function log(msg) {
             console.log(msg);
-            debugLog.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}<br>` + debugLog.innerHTML;
+            debugLog.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}\n` + debugLog.innerHTML;
         }
         function toggleDebug() { debugLog.style.display = debugLog.style.display === 'none' ? 'block' : 'none'; }
         function setStatus(color) { statusLight.style.background = color; }
@@ -249,13 +254,14 @@
 
         // === 初始化 ===
         setTimeout(() => {
-            log("初始化連線...");
+            log("初始化連線 (Proxy Mode)...");
             loadScores();
         }, 500);
 
+        // 降速：改為 5 秒更新一次，避免太頻繁被擋
         setInterval(() => {
-            if (!isSubmitting) refreshGlobalCount(); // 只有在沒寫入時才讀取
-        }, 2000);
+            if (!isSubmitting) refreshGlobalCount(); 
+        }, 5000);
 
         function updateIDDisplay() {
             idDisplay.innerHTML = `${playerName} <span class="play-count">· 個人: ${playCount}</span><span class="global-count">· 世界: ${globalPlayCount}</span>`;
@@ -269,7 +275,7 @@
             resetState(); loadScores();
         }
 
-        // === 遊戲核心 ===
+        // === Game Loop ===
         function gameLoop() {
             if (!state.isPlaying) return;
             const elapsed = (Date.now() - state.startTime) / 1000;
@@ -302,7 +308,6 @@
             if (Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY) > state.currentRadius) return;
             
             playCount++; localStorage.setItem('roach_playCount', playCount);
-            // 遊戲開始時不寫入 DB，只在結束時寫入，減少負擔
             updateIDDisplay();
 
             state.isPlaying = true; state.startTime = Date.now();
@@ -330,29 +335,26 @@
         function updateBtnStyle() { const r = state.currentRadius; btn.style.width = btn.style.height = (r * 2) + 'px'; btn.style.transform = `translate3d(${state.btnX - r}px, ${state.btnY - r}px, 0)`; btn.style.fontSize = Math.max(12, r/5) + 'px'; }
         function moveFinger(e) { if (state.isPlaying) { const p = e.touches ? e.touches[0] : e; state.fingerX = p.clientX; state.fingerY = p.clientY; e.preventDefault(); } }
 
-        // === 資料庫核心 (嚴格修復版) ===
+        // === 資料庫核心 (Proxy + AutoFix) ===
         function safeFetch() {
-            return fetch(API_URL).then(res => {
+            // 使用 PROXY_URL 繞過 CORS
+            return fetch(PROXY_URL).then(res => {
                 if(!res.ok) throw new Error("API Error " + res.status);
                 return res.json();
             })
             .then(data => {
-                setStatus('#0f0'); // 綠燈
-                // 數據結構檢測與自動修復
+                setStatus('#0f0'); 
                 if (Array.isArray(data)) {
-                    log("警告: DB 格式為陣列，強制修復中...");
-                    setStatus('#ff0'); // 黃燈
+                    log("格式錯誤(Array)，修復中...");
+                    setStatus('#ff0');
                     return { scores: [], global_play_count: 0 };
                 }
-                if (!data || typeof data !== 'object') {
-                    return { scores: [], global_play_count: 0 };
-                }
-                return data;
+                return data || { scores: [], global_play_count: 0 };
             })
             .catch(e => {
-                log("讀取失敗: " + e.message);
-                setStatus('#f00'); // 紅燈
-                // 即使失敗也回傳一個空的本地結構，讓遊戲不崩潰
+                log("讀取失敗(Proxy): " + e.message);
+                setStatus('#f00');
+                // 回傳本地暫存值，避免遊戲崩潰
                 return { scores: [], global_play_count: globalPlayCount };
             });
         }
@@ -377,21 +379,20 @@
         }
 
         function submitScore(newScore) {
-            isSubmitting = true; // 上鎖
+            isSubmitting = true;
             msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(上傳中...)", "<span style='color:#aaa; font-size:12px'>(紀錄中...)</span>");
-            log("準備上傳分數...");
+            log("透過 Proxy 上傳分數...");
             
             safeFetch().then(data => {
                 let list = data.scores || [];
-                let gCount = (data.global_play_count || 0) + 1; // 在這裡才增加世界計數
+                let gCount = (data.global_play_count || 0) + 1;
                 
                 list.push({ name: playerName, score: newScore, date: Date.now() });
                 list.sort((a, b) => b.score - a.score); 
                 list = list.slice(0, 20); 
 
-                log(`寫入數據: Rank=${list.length}, Global=${gCount}`);
-                
-                return fetch(API_URL, { 
+                // 寫入也必須透過 Proxy 轉發 (注意：corsproxy.io 支援 POST 轉發)
+                return fetch(PROXY_URL, { 
                     method: 'POST', 
                     headers: { 'Content-Type': 'application/json' }, 
                     body: JSON.stringify({ scores: list, global_play_count: gCount }) 
@@ -402,12 +403,12 @@
                 log("上傳成功");
                 msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(紀錄中...)", "<span style='color:var(--sage-green); font-size:12px'>(已永恆)</span>");
                 loadScores();
-                isSubmitting = false; // 解鎖
+                isSubmitting = false;
             })
             .catch(e => {
-                log("上傳炸裂: " + e.message);
+                log("上傳失敗: " + e.message);
                 msgDisplay.innerHTML = msgDisplay.innerHTML.replace("(紀錄中...)", "<span style='color:var(--dusty-pink); font-size:12px'>(遺失)</span>");
-                isSubmitting = false; // 解鎖
+                isSubmitting = false;
             });
         }
 
