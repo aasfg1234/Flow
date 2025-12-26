@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>流逝：生存挑戰 (v3.1 Fade Hard)</title>
+    <title>流逝：生存挑戰 (v3.5 Sunk Timer)</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;600&display=swap" rel="stylesheet">
     
     <style>
@@ -117,17 +117,19 @@
         }
         @keyframes ripple { 0% { transform: scale(1); opacity: 0.5; } 100% { transform: scale(1.5); opacity: 0; } }
 
-        /* === 層級 60：UI === */
+        /* === 層級 35：UI 計時器 (修正：降到按鈕與錯誤視窗之下) === */
         #timer {
             position: absolute; top: 10%; 
             font-size: 3.5rem; font-weight: 300; 
             color: var(--ink-black); letter-spacing: 2px; opacity: 0.8;
-            z-index: 60; pointer-events: none;
+            z-index: 35; /* 關鍵修改：從 60 降到 35 */
+            pointer-events: none;
             text-align: center; width: 100%;
             text-shadow: 0 0 20px var(--paper-bg); 
         }
         #timer small { font-size: 0.9rem; color: var(--sage-green); display:block; margin-top: 5px; text-transform: uppercase; }
 
+        /* === 層級 60：其他 UI (保持清晰) === */
         #msg {
             position: absolute; top: 25%; left: 50%; transform: translateX(-50%);
             min-width: 220px; font-size: 18px; color: var(--ink-black); font-weight: 600; 
@@ -144,22 +146,37 @@
             letter-spacing: 1px; font-family: sans-serif; z-index: 60;
             text-align: right;
         }
-        .play-count { color: var(--sage-green); font-weight: bold; margin-left: 5px; }
         .global-count { color: var(--muted-gold); margin-left: 5px; }
 
-        /* === 層級 100：蟑螂層 (效能優化) === */
-        #roach-layer { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            z-index: 100; pointer-events: none; overflow: hidden; 
-        }
+        /* === 層級 100：蟑螂層 === */
+        #roach-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; pointer-events: none; overflow: hidden; }
         .roach { 
             position: absolute; font-size: 40px; 
             text-shadow: 2px 2px 2px rgba(0,0,0,0.2);
-            transform: translateZ(0);
-            will-change: transform, top, left; 
-            contain: layout style;
-            transition: transform 0.1s linear; 
+            transform: translateZ(0); will-change: transform, top, left; 
+            contain: layout style; transition: transform 0.1s linear; 
         }
+
+        /* === 層級 40：系統錯誤彈窗 === */
+        #error-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 40; 
+            pointer-events: none; overflow: hidden;
+        }
+        .error-popup {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: #ff3333;
+            border: 1px solid #ff3333;
+            padding: 10px 15px;
+            font-family: monospace;
+            font-size: 12px;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
+            max-width: 200px;
+            animation: glitch-pop 0.2s ease-out;
+        }
+        .error-popup h4 { margin: 0 0 5px 0; font-size: 14px; text-transform: uppercase; border-bottom: 1px solid #ff3333; padding-bottom: 3px; }
+        @keyframes glitch-pop { 0% { transform: scale(0); opacity: 0; } 80% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(1); } }
 
         /* === 層級 200：登入 === */
         #name-modal {
@@ -195,6 +212,9 @@
     <div id="debug-log"></div>
 
     <div id="mute-btn" onclick="toggleMute()">🔇</div>
+    
+    <div id="error-layer"></div>
+    
     <div id="roach-layer"></div>
     <div id="zen-bg"></div>
 
@@ -233,10 +253,10 @@
         const btn = document.getElementById('btn'), timerDisplay = document.getElementById('timer'), msgDisplay = document.getElementById('msg'), roachLayer = document.getElementById('roach-layer'), bgm = document.getElementById('bgm'), muteBtn = document.getElementById('mute-btn');
         const scoreList = document.getElementById('scoreList'), nameModal = document.getElementById('name-modal'), inputName = document.getElementById('playerNameInput'), idDisplay = document.getElementById('player-id-display');
         const statusLight = document.getElementById('status-light'), debugLog = document.getElementById('debug-log');
+        const errorLayer = document.getElementById('error-layer');
 
         let isMuted = true; bgm.volume = 0.6; bgm.muted = true;
         let playerName = localStorage.getItem('lastPlayerName') || "";
-        let playCount = parseInt(localStorage.getItem('roach_playCount') || 0);
         let globalPlayCount = 0; 
         let isSubmitting = false;
 
@@ -266,7 +286,8 @@
             targetX: window.innerWidth / 2, targetY: window.innerHeight / 2,
             vx: 0, vy: 0, 
             fingerX: 0, fingerY: 0, currentRadius: CFG.startRadius,
-            btnOpacity: 0.9, fadeMode: 0, fadeFloor: 0.4
+            btnOpacity: 0.9, fadeMode: 0, fadeFloor: 0.4,
+            nextErrorTime: 7 
         };
         let loopId = null;
 
@@ -282,7 +303,7 @@
         }, 500);
 
         function updateIDDisplay() {
-            idDisplay.innerHTML = `${playerName} <span class="play-count">· 個人: ${playCount}</span><span class="global-count">· 世界: ${globalPlayCount}</span>`;
+            idDisplay.innerHTML = `${playerName} <span class="global-count">· 世界: ${globalPlayCount}</span>`;
         }
 
         function saveName() {
@@ -309,6 +330,11 @@
             
             if (elapsed > 10 && Math.random() < (0.02 + (elapsed - 10) * 0.002) && roachLayer.childElementCount < CFG.maxRoaches) spawnRoach();
             
+            if (elapsed > state.nextErrorTime) {
+                spawnError();
+                state.nextErrorTime += 15;
+            }
+
             const distToTarget = Math.hypot(state.targetX - state.btnX, state.targetY - state.btnY);
             if (distToTarget < 100 || Math.random() < 0.02) { const m = state.currentRadius + 20; state.targetX = m + Math.random() * (window.innerWidth - m*2); state.targetY = m + Math.random() * (window.innerHeight - m*2); }
             const dx = state.targetX - state.btnX, dy = state.targetY - state.btnY, dist = Math.hypot(dx, dy);
@@ -318,11 +344,9 @@
             
             if (elapsed > 30) btn.style.backgroundColor = elapsed > 60 ? "var(--dusty-pink)" : "var(--muted-gold)";
             
-            // === 調整後的透明度邏輯 (0.25 - 0.5) ===
             if (elapsed > 10 && state.fadeMode === 0) { 
                 if (Math.random() < (0.005 + (elapsed-10)*0.0001)) { 
                     state.fadeMode = 1; 
-                    // 隨機下限：0.25 ~ 0.5
                     state.fadeFloor = 0.25 + Math.random() * 0.25; 
                 } 
             }
@@ -343,6 +367,18 @@
             if (state.isPlaying) loopId = requestAnimationFrame(gameLoop);
         }
 
+        function spawnError() {
+            if (navigator.vibrate) navigator.vibrate(200); 
+            const err = document.createElement('div');
+            err.className = 'error-popup';
+            err.innerHTML = `<h4>⚠️ SYSTEM ERROR</h4>崩潰即將重啟<br>Code: 0x${Math.floor(Math.random()*9999).toString(16)}`;
+            const x = Math.random() * (window.innerWidth - 200);
+            const y = Math.random() * (window.innerHeight - 100);
+            err.style.left = x + 'px'; err.style.top = y + 'px';
+            errorLayer.appendChild(err);
+            setTimeout(() => { if(err.parentNode) err.remove(); }, 3000);
+        }
+
         function spawnRoach() { 
             const r = document.createElement('div'); r.innerText = '🪳'; r.className = 'roach'; 
             r.style.fontSize = `${30 + Math.random() * 50}px`; 
@@ -354,17 +390,8 @@
 
         function roachBrain(r, cx, cy) { 
             if (!r.parentNode) return; 
-            if (Math.hypot(state.btnX - cx, state.btnY - cy) < 50) { 
-                setTimeout(() => { 
-                    if(r.parentNode) moveRoachTo(r, cx, cy, Math.random()>0.5?window.innerWidth+200:-200, Math.random()>0.5?window.innerHeight+200:-200, 500, () => r.remove()); 
-                }, 200); return; 
-            } 
-            if (Math.random() < 0.3) setTimeout(() => roachBrain(r, cx, cy), 100 + Math.random()*200); 
-            else { 
-                const a = Math.atan2(state.btnY - cy, state.btnX - cx) + (Math.random()-0.5); 
-                const d = 50 + Math.random()*100, tm = 50 + Math.random()*100; 
-                moveRoachTo(r, cx, cy, cx+Math.cos(a)*d, cy+Math.sin(a)*d, tm, () => roachBrain(r, cx+Math.cos(a)*d, cy+Math.sin(a)*d)); 
-            } 
+            if (Math.hypot(state.btnX - cx, state.btnY - cy) < 50) { setTimeout(() => { if(r.parentNode) moveRoachTo(r, cx, cy, Math.random()>0.5?window.innerWidth+200:-200, Math.random()>0.5?window.innerHeight+200:-200, 500, () => r.remove()); }, 200); return; } 
+            if (Math.random() < 0.3) setTimeout(() => roachBrain(r, cx, cy), 100 + Math.random()*200); else { const a = Math.atan2(state.btnY - cy, state.btnX - cx) + (Math.random()-0.5); const d = 50 + Math.random()*100, tm = 50 + Math.random()*100; moveRoachTo(r, cx, cy, cx+Math.cos(a)*d, cy+Math.sin(a)*d, tm, () => roachBrain(r, cx+Math.cos(a)*d, cy+Math.sin(a)*d)); } 
         }
 
         function moveRoachTo(r, sx, sy, ex, ey, d, cb) { 
@@ -379,9 +406,7 @@
             const p = e.touches ? e.touches[0] : e; state.fingerX = p.clientX; state.fingerY = p.clientY;
             if (Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY) > state.currentRadius) return;
             
-            playCount++; localStorage.setItem('roach_playCount', playCount);
             updateIDDisplay();
-            
             state.isPlaying = true; state.startTime = Date.now();
             msgDisplay.style.opacity = '0'; btn.innerText = ""; btn.style.color = "transparent"; 
             bgm.play().catch(e => {}); loopId = requestAnimationFrame(gameLoop);
@@ -400,19 +425,21 @@
         function resetState() {
             state.btnX = window.innerWidth/2; state.btnY = window.innerHeight/2; state.vx = 0; state.vy = 0;
             state.targetX = state.btnX; state.targetY = state.btnY; state.currentRadius = CFG.startRadius;
-            state.btnOpacity = 0.9; state.fadeMode = 0; roachLayer.innerHTML = ''; msgDisplay.style.opacity = '0';
-            btn.style.backgroundColor = "var(--sage-green)"; btn.style.boxShadow = "0 10px 30px rgba(141, 163, 153, 0.4)";
+            state.btnOpacity = 0.9; state.fadeMode = 0; 
             
-            // 重置文字
-            btn.innerHTML = "按著<br>隨圓"; 
-            btn.style.color = "#fff"; btn.style.opacity = 0.9; updateBtnStyle();
+            state.nextErrorTime = 7;
+            roachLayer.innerHTML = ''; 
+            errorLayer.innerHTML = ''; 
+            msgDisplay.style.opacity = '0';
+            
+            btn.style.backgroundColor = "var(--sage-green)"; btn.style.boxShadow = "0 10px 30px rgba(141, 163, 153, 0.4)";
+            btn.innerHTML = "按著<br>隨圓"; btn.style.color = "#fff"; btn.style.opacity = 0.9; updateBtnStyle();
         }
 
         function updateBtnStyle() { 
             const r = state.currentRadius; 
             btn.style.width = btn.style.height = (r * 2) + 'px'; 
             btn.style.transform = `translate3d(${state.btnX - r}px, ${state.btnY - r}px, 0)`; 
-            // 調整字體大小，配合標準字體
             btn.style.fontSize = Math.max(14, r/4.5) + 'px'; 
         }
         function moveFinger(e) { if (state.isPlaying) { const p = e.touches ? e.touches[0] : e; state.fingerX = p.clientX; state.fingerY = p.clientY; e.preventDefault(); } }
