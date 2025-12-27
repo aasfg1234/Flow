@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>流逝：生存挑戰 (v4.5 Anti-Cheat)</title>
+    <title>流逝：生存挑戰 (v4.8 UI Fix)</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
     
     <style>
         :root {
@@ -27,13 +28,17 @@
             -webkit-touch-callout: none;
         }
 
-        /* === Debug 狀態燈 === */
+        /* === Debug 狀態燈 (修改位置) === */
         #status-light {
-            position: absolute; top: 10px; left: 10px;
-            width: 8px; height: 8px; border-radius: 50%;
+            position: absolute; 
+            /* 修改：移到靜音按鈕下方，避免太靠近邊緣 */
+            top: 90px; left: 45px;
+            /* 修改：稍微加大尺寸，方便點擊 */
+            width: 12px; height: 12px; border-radius: 50%;
             background: #ccc; z-index: 300;
             box-shadow: 0 0 5px rgba(0,0,0,0.2);
             transition: background 0.3s;
+            cursor: pointer;
         }
         #debug-log {
             position: absolute; bottom: 0; left: 0; width: 100%; height: 120px;
@@ -87,19 +92,19 @@
         .is-me { text-decoration: underline; text-decoration-color: var(--muted-gold); text-underline-offset: 4px;}
         .loading { color: #aaa; text-align: center; font-size: 12px; font-weight: 300; letter-spacing: 2px;}
 
-        /* === 層級 50：核心按鈕 === */
+        /* === 層級 160：核心按鈕 (比低電量彈窗高) === */
         #btn {
             border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
             flex-direction: column; 
             text-align: center;
             position: absolute; 
-            z-index: 50; 
+            z-index: 160;
             top: 0; left: 0; 
             cursor: crosshair; color: #fff;
             background: var(--sage-green);
             box-shadow: 0 10px 30px rgba(141, 163, 153, 0.4);
-            transition: width 0.1s, height 0.1s, background-color 0.5s; 
+            transition: background-color 0.5s; 
             display: none; will-change: transform, opacity;
             
             font-family: var(--font-serif); 
@@ -157,6 +162,37 @@
             transform: translateZ(0); will-change: transform, top, left; 
             contain: layout style; transition: transform 0.1s linear; 
         }
+
+        /* === 層級 150：假低電量彈窗 (iOS Style) === */
+        #battery-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.2); backdrop-filter: blur(2px);
+            z-index: 150; display: none;
+            align-items: center; justify-content: center;
+        }
+        .ios-alert {
+            width: 270px; background: rgba(245,245,245,0.95);
+            border-radius: 14px; text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        .ios-alert h4 {
+            margin: 20px 0 5px 0; font-size: 17px; font-weight: 600; color: #000;
+        }
+        .ios-alert p {
+            margin: 0 0 20px 0; font-size: 13px; color: #000;
+        }
+        .ios-btns {
+            border-top: 1px solid rgba(60,60,67,0.2);
+            display: flex; height: 44px;
+        }
+        .ios-btn {
+            flex: 1; display: flex; align-items: center; justify-content: center;
+            font-size: 17px; color: #007aff; cursor: pointer;
+            border-right: 1px solid rgba(60,60,67,0.2);
+        }
+        .ios-btn:last-child { border-right: none; font-weight: 400; }
+        .ios-btn:first-child { font-weight: 600; }
 
         /* === 層級 40：系統錯誤彈窗 === */
         #error-layer {
@@ -219,6 +255,17 @@
     <div id="roach-layer"></div>
     <div id="zen-bg"></div>
 
+    <div id="battery-overlay" ontouchstart="event.stopPropagation()">
+        <div class="ios-alert">
+            <h4>電量不足</h4>
+            <p>剩餘 20% 電量。</p>
+            <div class="ios-btns">
+                <div class="ios-btn" onclick="closeBattery()">關閉</div>
+                <div class="ios-btn" onclick="closeBattery()">低耗電模式</div>
+            </div>
+        </div>
+    </div>
+
     <div id="name-modal">
         <h2>留下印記</h2>
         <div class="instructions">
@@ -261,6 +308,7 @@
         const scoreList = document.getElementById('scoreList'), nameModal = document.getElementById('name-modal'), inputName = document.getElementById('playerNameInput'), idDisplay = document.getElementById('player-id-display');
         const statusLight = document.getElementById('status-light'), debugLog = document.getElementById('debug-log');
         const errorLayer = document.getElementById('error-layer');
+        const batteryOverlay = document.getElementById('battery-overlay');
 
         let isMuted = true; bgm.volume = 0.6; bgm.muted = true;
         let playerName = localStorage.getItem('lastPlayerName') || "";
@@ -295,7 +343,9 @@
             vx: 0, vy: 0, 
             fingerX: 0, fingerY: 0, currentRadius: CFG.startRadius,
             btnOpacity: 0.9, fadeMode: 0, fadeFloor: 0.4,
-            nextErrorTime: 7 
+            nextErrorTime: 7,
+            nextBatteryTime: 22.5, // 22.5秒觸發
+            nextGiantRoachTime: 28 // 28秒觸發
         };
         let loopId = null;
 
@@ -303,10 +353,9 @@
         let lastTouchEnd = 0;
         document.addEventListener('touchend', e => { if (Date.now() - lastTouchEnd <= 300) e.preventDefault(); lastTouchEnd = Date.now(); }, false);
 
-        // === 新增：防切視窗偵測 ===
+        // 防作弊
         document.addEventListener('visibilitychange', () => {
             if (document.hidden && state.isPlaying) {
-                // 如果在遊戲中切換視窗，直接 Game Over
                 gameOver((Date.now() - state.startTime) / 1000);
             }
         });
@@ -346,17 +395,39 @@
             resetState(); loadScores();
         }
 
+        function closeBattery() {
+            batteryOverlay.style.display = 'none';
+        }
+
         function gameLoop() {
             if (!state.isPlaying) return;
             const elapsed = (Date.now() - state.startTime) / 1000;
             timerDisplay.innerHTML = elapsed.toFixed(2) + " <small>SECONDS</small>";
             state.currentRadius = elapsed < CFG.shrinkTime ? CFG.startRadius - ((CFG.startRadius - CFG.minRadius) * (elapsed / CFG.shrinkTime)) : CFG.minRadius;
             
+            // 一般蟑螂
             if (elapsed > 10 && Math.random() < (0.02 + (elapsed - 10) * 0.002) && roachLayer.childElementCount < CFG.maxRoaches) spawnRoach();
             
+            // 系統崩潰
             if (elapsed > state.nextErrorTime) {
                 spawnError();
                 state.nextErrorTime += 15;
+            }
+
+            // === 心理戰機制 ===
+            // 1. 假低電量 (3秒自動關閉)
+            if (elapsed > state.nextBatteryTime) {
+                batteryOverlay.style.display = 'flex';
+                state.nextBatteryTime += 22.5; 
+                // 修改處：3秒後自動關閉
+                setTimeout(() => {
+                    batteryOverlay.style.display = 'none';
+                }, 3000);
+            }
+            // 2. 10倍大蟑螂
+            if (elapsed > state.nextGiantRoachTime) {
+                spawnGiantRoach();
+                state.nextGiantRoachTime += 28;
             }
 
             const distToTarget = Math.hypot(state.targetX - state.btnX, state.targetY - state.btnY);
@@ -368,26 +439,19 @@
             
             if (elapsed > 30) btn.style.backgroundColor = elapsed > 60 ? "var(--dusty-pink)" : "var(--muted-gold)";
             
-            if (elapsed > 10 && state.fadeMode === 0) { 
-                if (Math.random() < (0.005 + (elapsed-10)*0.0001)) { 
-                    state.fadeMode = 1; 
-                    state.fadeFloor = 0.25 + Math.random() * 0.25; 
-                } 
-            }
-            if (state.fadeMode === 1) { 
-                state.btnOpacity -= 0.005; 
-                if (state.btnOpacity <= state.fadeFloor) { state.btnOpacity = state.fadeFloor; state.fadeMode = 2; } 
-            }
-            else if (state.fadeMode === 2) { 
-                state.btnOpacity += 0.005; 
-                if (state.btnOpacity >= 0.9) { state.btnOpacity = 0.9; state.fadeMode = 0; } 
-            }
-            else { state.btnOpacity = 0.9; }
+            // === 隨機擾動透明度 ===
+            const chaos = Math.min(1, elapsed / 120); 
+            state.btnOpacity += (Math.random() - 0.5) * 0.15; 
+            const maxOp = 1.0 - (chaos * 0.6); 
+            const minOp = 0.8 - (chaos * 0.75); 
+            if (state.btnOpacity > maxOp) state.btnOpacity = maxOp;
+            if (state.btnOpacity < minOp) state.btnOpacity = minOp;
             btn.style.opacity = state.btnOpacity;
             
             updateBtnStyle();
             
-            if (Math.hypot(state.fingerX - state.btnX, state.fingerY - state.btnY) > state.currentRadius + 40) gameOver(elapsed);
+            // === 關鍵修正：Y軸偏移 20px ===
+            if (Math.hypot(state.fingerX - state.btnX, state.fingerY - (state.btnY - 20)) > state.currentRadius + 40) gameOver(elapsed);
             if (state.isPlaying) loopId = requestAnimationFrame(gameLoop);
         }
 
@@ -407,6 +471,19 @@
             const r = document.createElement('div'); r.innerText = '🪳'; r.className = 'roach'; 
             r.style.fontSize = `${30 + Math.random() * 50}px`; 
             const s = Math.floor(Math.random()*4), w = window.innerWidth, h = window.innerHeight, o = 100; 
+            let x, y; if(s===0){x=Math.random()*w;y=-o}else if(s===1){x=w+o;y=Math.random()*h}else if(s===2){x=Math.random()*w;y=h+o}else{x=-o;y=Math.random()*h} 
+            r.style.left=x+'px'; r.style.top=y+'px'; 
+            roachLayer.appendChild(r); roachBrain(r, x, y); 
+        }
+
+        // === 10倍巨型蟑螂 ===
+        function spawnGiantRoach() {
+            const r = document.createElement('div'); r.innerText = '🪳'; r.className = 'roach'; 
+            // 尺寸改為 350px (約正常10倍)
+            r.style.fontSize = '350px'; 
+            r.style.opacity = '0.9';
+            // 調整偏移量，避免生成在畫面內穿幫
+            const s = Math.floor(Math.random()*4), w = window.innerWidth, h = window.innerHeight, o = 400; 
             let x, y; if(s===0){x=Math.random()*w;y=-o}else if(s===1){x=w+o;y=Math.random()*h}else if(s===2){x=Math.random()*w;y=h+o}else{x=-o;y=Math.random()*h} 
             r.style.left=x+'px'; r.style.top=y+'px'; 
             roachLayer.appendChild(r); roachBrain(r, x, y); 
@@ -433,6 +510,7 @@
             updateIDDisplay();
             state.isPlaying = true; state.startTime = Date.now();
             msgDisplay.style.opacity = '0'; btn.innerText = ""; btn.style.color = "transparent"; 
+            batteryOverlay.style.display = 'none'; // 重置彈窗
             bgm.play().catch(e => {}); loopId = requestAnimationFrame(gameLoop);
         }
 
@@ -443,6 +521,7 @@
             btn.innerText = "散了"; btn.style.color = "#fff"; btn.style.backgroundColor = "#d8c3c3"; 
             msgDisplay.innerHTML = `緣分已盡<br><span style="font-family:'Roboto',sans-serif; font-size:2rem; color:var(--ink-black); display:block; margin:5px 0;">${score.toFixed(2)}</span><small>(上傳中...)</small>`;
             msgDisplay.style.opacity = '1';
+            batteryOverlay.style.display = 'none'; // 遊戲結束關閉彈窗
             submitScore(score); setTimeout(resetState, 2000);
         }
 
@@ -452,9 +531,12 @@
             state.btnOpacity = 0.9; state.fadeMode = 0; 
             
             state.nextErrorTime = 7;
+            state.nextBatteryTime = 22.5; // 重置觸發時間
+            state.nextGiantRoachTime = 28; // 重置觸發時間
             roachLayer.innerHTML = ''; 
             errorLayer.innerHTML = ''; 
             msgDisplay.style.opacity = '0';
+            batteryOverlay.style.display = 'none';
             
             btn.style.backgroundColor = "var(--sage-green)"; btn.style.boxShadow = "0 10px 30px rgba(141, 163, 153, 0.4)";
             btn.innerHTML = "按著<br>隨圓"; btn.style.color = "#fff"; btn.style.opacity = 0.9; updateBtnStyle();
@@ -485,7 +567,6 @@
                 log("讀取: " + e.message);
                 if(e.message.includes("429")) setStatus('#ff0'); 
                 else setStatus('#f00');
-                // 標記讀取失敗，防止寫入
                 return { scores: [], global_play_count: globalPlayCount, global_play_time: globalPlayTime, success: false };
             });
         }
@@ -510,7 +591,6 @@
             log("準備上傳...");
             
             safeFetch().then(data => {
-                // 安全鎖：如果讀取失敗，禁止寫入
                 if (!data.success) {
                     throw new Error("讀取失敗，為保護資料拒絕存檔");
                 }
@@ -520,11 +600,8 @@
                 let gTime = (data.global_play_time || 0) + newScore;
                 
                 const sig = generateSignature(playerName, newScore);
-                
                 list.push({ name: playerName, score: newScore, date: Date.now(), signature: sig });
                 list.sort((a, b) => b.score - a.score); 
-                
-                // 保留 100 筆
                 list = list.slice(0, 100); 
 
                 log(`寫入: Rank=${list.length}, Global=${gCount}, Time=${gTime}`);
